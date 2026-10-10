@@ -1,0 +1,73 @@
+name: Build
+
+on: [push]
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: amigadev/crosstools:m68k-amigaos-gcc10
+
+    steps:
+    - uses: actions/checkout@v7
+      with: 
+        submodules: 'true'
+
+    - name: Whitelist the repo
+      run: |
+        git config --global --add safe.directory $GITHUB_WORKSPACE
+
+    - name: Create Build Environment
+      run: |
+        cmake -E make_directory ${{runner.workspace}}/build
+        cmake -E make_directory ${{runner.workspace}}/install
+
+    - name: Configure CMake
+      shell: bash
+      run: cmake -B${{runner.workspace}}/build -S$GITHUB_WORKSPACE -DM68K_CPU=custom -DM68K_FPU=custom -DM68K_CRT=custom -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_INSTALL_PREFIX:PATH=${{runner.workspace}}/install
+
+    - name: Build
+      shell: bash
+      run: cmake --build ${{runner.workspace}}/build --config $BUILD_TYPE -j$(nproc)
+
+    - name: Install
+      shell: bash
+      run: cmake --build ${{runner.workspace}}/build --config $BUILD_TYPE --target install
+
+    - name: Archive
+      shell: bash
+      run: cd ${{runner.workspace}}/install && lha -c ./graphics.library.lha *
+
+    - name: Move archive
+      shell: bash
+      working-directory: ${{runner.workspace}}/
+      run: mv -fv ${{runner.workspace}}/install/graphics.library.lha . 
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v7
+      with:
+        path: ${{runner.workspace}}/graphics.library.lha
+        retention-days: 2
+        archive: false
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    steps:
+    - name: Download Artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: graphics.library.lha
+        path: ${{runner.workspace}}/uploads
+    
+    - name: Release
+      uses: softprops/action-gh-release@v3
+      with:
+        files: "${{runner.workspace}}/uploads/**"
