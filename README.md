@@ -1,0 +1,2 @@
+# Open Source reimplementation of `graphics.library`
+[![CMake](https://github.com/MBeijer/graphics.library/actions/workflows/cmake.yml/badge.svg)](https://github.com/MBeijer/graphics.library/actions/workflows/cmake.yml)
