@@ -17,7 +17,7 @@ jobs:
       image: amigadev/crosstools:m68k-amigaos-gcc10
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with: 
         submodules: 'true'
     # - run: cd Emu68Contribs && git checkout main && git pull --allow-unrelated-histories
@@ -62,7 +62,7 @@ jobs:
       run: mv -fv ${{runner.workspace}}/install/graphics.library.lha . 
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: graphics-library-archive
         path: ${{runner.workspace}}/graphics.library.lha
@@ -76,12 +76,12 @@ jobs:
       contents: write
     steps:
     - name: Download Artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: graphics-library-archive
         path: ${{runner.workspace}}/uploads
     
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: "${{runner.workspace}}/uploads/**"
