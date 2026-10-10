@@ -1,0 +1,233 @@
+* SPDX-License-Identifier: APL-1.1
+* Derived from the AROS Development Team's rom/graphics/graphics.conf.
+* AROS revision: 3793aefc6f2d8498b9629eec852e1613cf69f21f
+* Source: https://github.com/aros-development-team/AROS
+* Classic m68k adaptation (2026-10-10): retain the AmigaOS public types,
+* private vector slots and tag-call aliases; omit AROS-only extensions.
+* See HEADERS.md for provenance and LICENSE.APL for the license terms.
+==id $VER: graphics_lib.sfd 47.10 (10.10.2026)
+==copyright AROS Development Team; classic adaptation 2026. Licensed under APL-1.1; see LICENSE.APL.
+==basetype struct GfxBase *
+==libname graphics.library
+==base _GfxBase
+==include <graphics/gfxbase.h>
+==include <graphics/gfx.h>
+==include <graphics/displayinfo.h>
+==include <graphics/gels.h>
+==include <graphics/rastport.h>
+==include <graphics/view.h>
+==include <graphics/copper.h>
+==include <graphics/clip.h>
+==include <graphics/regions.h>
+==include <graphics/sprite.h>
+==include <graphics/text.h>
+==include <graphics/scale.h>
+==include <hardware/blit.h>
+==bias 30
+==public
+LONG BltBitMap(const struct BitMap *srcBitMap, WORD xSrc, WORD ySrc, struct BitMap *destBitMap, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm, UBYTE mask, PLANEPTR tempA) (A0,D0,D1,A1,D2,D3,D4,D5,D6,D7,A2)
+void BltTemplate(const PLANEPTR source, WORD xSrc, WORD srcMod, struct RastPort *destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize) (A0,D0,D1,A1,D2,D3,D4,D5)
+void ClearEOL(struct RastPort *rp) (A1)
+void ClearScreen(struct RastPort *rp) (A1)
+WORD TextLength(struct RastPort *rp, CONST_STRPTR string, UWORD count) (A1,A0,D0)
+LONG Text(struct RastPort *rp, CONST_STRPTR string, UWORD count) (A1,A0,D0)
+LONG SetFont(struct RastPort *rp, struct TextFont *textFont) (A1,A0)
+struct TextFont *OpenFont(const struct TextAttr *textAttr) (A0)
+void CloseFont(struct TextFont *textFont) (A1)
+ULONG AskSoftStyle(struct RastPort *rp) (A1)
+ULONG SetSoftStyle(struct RastPort *rp, ULONG style, ULONG enable) (A1,D0,D1)
+void AddBob(struct Bob *bob, struct RastPort *rp) (A0,A1)
+void AddVSprite(struct VSprite *vs, struct RastPort *rp) (A0,A1)
+void DoCollision(struct RastPort *rp) (A1)
+void DrawGList(struct RastPort *rp, struct ViewPort *vp) (A1,A0)
+void InitGels(struct VSprite *head, struct VSprite *tail, struct GelsInfo *GInfo) (A0,A1,A2)
+void InitMasks(struct VSprite *vs) (A0)
+void RemIBob(struct Bob *bob, struct RastPort *rp, struct ViewPort *vp) (A0,A1,A2)
+void RemVSprite(struct VSprite *vs) (A0)
+void SetCollision(ULONG num, void (*routine)(struct VSprite *gelA, struct VSprite *gelB), struct GelsInfo *GInfo) (D0,A0,A1)
+void SortGList(struct RastPort *rp) (A1)
+void AddAnimOb(struct AnimOb *anOb, struct AnimOb **anKey, struct RastPort *rp) (A0,A1,A2)
+void Animate(struct AnimOb **anKey, struct RastPort *rp) (A0,A1)
+BOOL GetGBuffers(struct AnimOb *anOb, struct RastPort *rp, BOOL db) (A0,A1,D0)
+void InitGMasks(struct AnimOb *anOb) (A0)
+void DrawEllipse(struct RastPort *rp, WORD xCenter, WORD yCenter, WORD a, WORD b) (A1,D0,D1,D2,D3)
+LONG AreaEllipse(struct RastPort *rp, WORD cx, WORD cy, WORD a, WORD b) (A1,D0,D1,D2,D3)
+void LoadRGB4(struct ViewPort *vp, const UWORD *colors, WORD count) (A0,A1,D0)
+void InitRastPort(struct RastPort *rp) (A1)
+void InitVPort(struct ViewPort *vp) (A0)
+ULONG MrgCop(struct View *view) (A1)
+ULONG MakeVPort(struct View *view, struct ViewPort *viewport) (A0,A1)
+void LoadView(struct View *view) (A1)
+void WaitBlit() ()
+void SetRast(struct RastPort *rp, UBYTE pen) (A1,D0)
+void Move(struct RastPort *rp, WORD x, WORD y) (A1,D0,D1)
+void Draw(struct RastPort *rp, WORD x, WORD y) (A1,D0,D1)
+LONG AreaMove(struct RastPort *rp, WORD x, WORD y) (A1,D0,D1)
+LONG AreaDraw(struct RastPort *rp, WORD x, WORD y) (A1,D0,D1)
+LONG AreaEnd(struct RastPort *rp) (A1)
+void WaitTOF() ()
+void QBlit(struct bltnode *bn) (A1)
+void InitArea(struct AreaInfo *areainfo, APTR buffer, WORD maxvectors) (A0,A1,D0)
+void SetRGB4(struct ViewPort *vp, WORD n, UBYTE r, UBYTE g, UBYTE b) (A0,D0,D1,D2,D3)
+void QBSBlit(struct bltnode *bn) (A1)
+void BltClear(PLANEPTR memBlock, ULONG bytecount, ULONG flags) (A1,D0,D1)
+void RectFill(struct RastPort *rp, WORD xMin, WORD yMin, WORD xMax, WORD yMax) (A1,D0,D1,D2,D3)
+void BltPattern(struct RastPort *rp, const PLANEPTR mask, WORD xMin, WORD yMin, WORD xMax, WORD yMax, UWORD byteCnt) (A1,A0,D0,D1,D2,D3,D4)
+ULONG ReadPixel(struct RastPort *rp, WORD x, WORD y) (A1,D0,D1)
+LONG WritePixel(struct RastPort *rp, WORD x, WORD y) (A1,D0,D1)
+BOOL Flood(struct RastPort *rp, ULONG mode, WORD x, WORD y) (A1,D2,D0,D1)
+void PolyDraw(struct RastPort *rp, WORD count, const WORD *polyTable) (A1,D0,A0)
+void SetAPen(struct RastPort *rp, UBYTE pen) (A1,D0)
+void SetBPen(struct RastPort *rp, UBYTE pen) (A1,D0)
+void SetDrMd(struct RastPort *rp, UBYTE drawMode) (A1,D0)
+void InitView(struct View *view) (A1)
+void CBump(struct UCopList *ucl) (A1)
+LONG CMove(struct UCopList *ucl, APTR reg, WORD value) (A1,D0,D1)
+LONG CWait(struct UCopList *ucl, WORD v, WORD h) (A1,D0,D1)
+LONG VBeamPos() ()
+void InitBitMap(struct BitMap *bm, BYTE depth, WORD width, WORD height) (A0,D0,D1,D2)
+void ScrollRaster(struct RastPort *rp, WORD dx, WORD dy, WORD xMin, WORD yMin, WORD xMax, WORD yMax) (A1,D0,D1,D2,D3,D4,D5)
+void WaitBOVP(struct ViewPort *vp) (A0)
+WORD GetSprite(struct SimpleSprite *sprite, WORD pick) (A0,D0)
+void FreeSprite(WORD pick) (D0)
+void ChangeSprite(struct ViewPort *vp, struct SimpleSprite *s, UWORD *newdata) (A0,A1,A2)
+void MoveSprite(struct ViewPort *vp, struct SimpleSprite *sprite, WORD x, WORD y) (A0,A1,D0,D1)
+void LockLayerRom(struct Layer *l) (A5)
+void UnlockLayerRom(struct Layer *l) (A5)
+void SyncSBitMap(struct Layer *l) (A0)
+void CopySBitMap(struct Layer *l) (A0)
+void OwnBlitter() ()
+void DisownBlitter() ()
+struct TmpRas *InitTmpRas(struct TmpRas *tmpras, PLANEPTR buffer, LONG size) (A0,A1,D0)
+void AskFont(struct RastPort *rp, struct TextAttr *textAttr) (A1,A0)
+void AddFont(struct TextFont *textFont) (A1)
+void RemFont(struct TextFont *textFont) (A1)
+PLANEPTR AllocRaster(UWORD width, UWORD height) (D0,D1)
+void FreeRaster(PLANEPTR p, UWORD width, UWORD height) (A0,D0,D1)
+void AndRectRegion(struct Region *Reg, const struct Rectangle *Rect) (A0,A1)
+BOOL OrRectRegion(struct Region *Reg, const struct Rectangle *Rect) (A0,A1)
+struct Region *NewRegion() ()
+BOOL ClearRectRegion(struct Region *Reg, const struct Rectangle *Rect) (A0,A1)
+void ClearRegion(struct Region *region) (A0)
+void DisposeRegion(struct Region *region) (A0)
+void FreeVPortCopLists(struct ViewPort *vp) (A0)
+void FreeCopList(struct CopList *coplist) (A0)
+void ClipBlit(struct RastPort *srcRP, WORD xSrc, WORD ySrc, struct RastPort *destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm) (A0,D0,D1,A1,D2,D3,D4,D5,D6)
+BOOL XorRectRegion(struct Region *Reg, const struct Rectangle *Rect) (A0,A1)
+void FreeCprList(struct cprlist *cprList) (A0)
+struct ColorMap *GetColorMap(LONG entries) (D0)
+void FreeColorMap(struct ColorMap *colormap) (A0)
+ULONG GetRGB4(struct ColorMap *colormap, LONG entry) (A0,D0)
+void ScrollVPort(struct ViewPort *vp) (A0)
+struct CopList *UCopperListInit(struct UCopList *ucl, WORD n) (A0,D0)
+void FreeGBuffers(struct AnimOb *anOb, struct RastPort *rp, BOOL db) (A0,A1,D0)
+void BltBitMapRastPort(const struct BitMap *srcBitMap, WORD xSrc, WORD ySrc, struct RastPort *destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm) (A0,D0,D1,A1,D2,D3,D4,D5,D6)
+BOOL OrRegionRegion(const struct Region *R1, struct Region *R2) (A0,A1)
+BOOL XorRegionRegion(const struct Region *R1, struct Region *R2) (A0,A1)
+BOOL AndRegionRegion(const struct Region *R1, struct Region *R2) (A0,A1)
+void SetRGB4CM(struct ColorMap *cm, WORD n, UBYTE r, UBYTE g, UBYTE b) (A0,D0,D1,D2,D3)
+void BltMaskBitMapRastPort(const struct BitMap *srcBitMap, WORD xSrc, WORD ySrc, struct RastPort *destRP, WORD xDest, WORD yDest, WORD xSize, WORD ySize, UBYTE minterm, const PLANEPTR bltMask) (A0,D0,D1,A1,D2,D3,D4,D5,D6,A2)
+==private
+void GfxInternal1() ()
+void GfxInternal2() ()
+==public
+BOOL AttemptLockLayerRom(struct Layer *l) (A5)
+==version 36
+APTR GfxNew(ULONG node_type) (D0)
+void GfxFree(APTR node) (A0)
+void GfxAssociate(APTR pointer, APTR node) (A0,A1)
+void BitMapScale(struct BitScaleArgs *bitScaleArgs) (A0)
+UWORD ScalerDiv(UWORD factor, UWORD numerator, UWORD denominator) (D0,D1,D2)
+WORD TextExtent(struct RastPort *rp, CONST_STRPTR string, WORD count, struct TextExtent *textExtent) (A1,A0,D0,A2)
+ULONG TextFit(struct RastPort *rp, CONST_STRPTR string, UWORD strLen, const struct TextExtent *textExtent, const struct TextExtent *constrainingExtent, WORD strDirection, UWORD constrainingBitWidth, UWORD constrainingBitHeight) (A1,A0,D0,A2,A3,D1,D2,D3)
+APTR GfxLookUp(CONST_APTR pointer) (A0)
+BOOL VideoControl(struct ColorMap *cm, struct TagItem *tags) (A0,A1)
+==varargs
+BOOL VideoControlTags(struct ColorMap *cm, ULONG firstTag, ...) (A0,A1)
+struct MonitorSpec *OpenMonitor(CONST_STRPTR monitor_name, ULONG display_id) (A1,D0)
+BOOL CloseMonitor(struct MonitorSpec *monitor_spec) (A0)
+DisplayInfoHandle FindDisplayInfo(ULONG ID) (D0)
+ULONG NextDisplayInfo(ULONG last_ID) (D0)
+==private
+void AddDisplayInfo(APTR displayInfoRecord) (A0)
+void AddDisplayInfoData(DisplayInfoHandle handle, UBYTE *buf, ULONG size, ULONG tagID, ULONG ID) (A0,A1,D0,D1,D2)
+void SetDisplayInfoData(DisplayInfoHandle handle, UBYTE *buf, ULONG size, ULONG tagID, ULONG ID) (A0,A1,D0,D1,D2)
+==public
+ULONG GetDisplayInfoData(DisplayInfoHandle handle, APTR buf, ULONG size, ULONG tagID, ULONG ID) (A0,A1,D0,D1,D2)
+void FontExtent(const struct TextFont *font, struct TextExtent *fontExtent) (A0,A1)
+LONG ReadPixelLine8(struct RastPort *rp, UWORD xstart, UWORD ystart, UWORD width, UBYTE *array, struct RastPort *tempRP) (A0,D0,D1,D2,A2,A1)
+LONG WritePixelLine8(struct RastPort *rp, UWORD xstart, UWORD ystart, UWORD width, UBYTE *array, struct RastPort *tempRP) (A0,D0,D1,D2,A2,A1)
+LONG ReadPixelArray8(struct RastPort *rp, UWORD xstart, UWORD ystart, UWORD xstop, UWORD ystop, UBYTE *array, struct RastPort *temprp) (A0,D0,D1,D2,D3,A2,A1)
+LONG WritePixelArray8(struct RastPort *rp, UWORD xstart, UWORD ystart, UWORD xstop, UWORD ystop, UBYTE *array, struct RastPort *temprp) (A0,D0,D1,D2,D3,A2,A1)
+LONG GetVPModeID(const struct ViewPort *vp) (A0)
+LONG ModeNotAvailable(ULONG modeID) (D0)
+WORD WeighTAMatch(const struct TextAttr *reqTextAttr, const struct TextAttr *targetTextAttr, const struct TagItem *targetTags) (A0,A1,A2)
+==varargs
+WORD WeighTAMatchTags(const struct TextAttr *reqTextAttr, const struct TextAttr *targetTextAttr, ULONG firstTag, ...) (A0,A1,A2)
+void EraseRect(struct RastPort *rp, WORD xMin, WORD yMin, WORD xMax, WORD yMax) (A1,D0,D1,D2,D3)
+ULONG ExtendFont(struct TextFont *font, const struct TagItem *fontTags) (A0,A1)
+==varargs
+ULONG ExtendFontTags(struct TextFont *font, ULONG firstTag, ...) (A0,A1)
+void StripFont(struct TextFont *font) (A0)
+==version 39
+UWORD CalcIVG(struct View *View, struct ViewPort *ViewPort) (A0,A1)
+LONG AttachPalExtra(struct ColorMap *cm, struct ViewPort *vp) (A0,A1)
+LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, const struct TagItem *tags) (A0,D1,D2,D3,A1)
+==varargs
+LONG ObtainBestPen(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, ULONG firstTag, ...) (A0,D1,D2,D3,A1)
+==private
+void GfxInternal3() ()
+==public
+void SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b) (A0,D0,D1,D2,D3)
+ULONG GetAPen(struct RastPort *rp) (A0)
+ULONG GetBPen(struct RastPort *rp) (A0)
+ULONG GetDrMd(struct RastPort *rp) (A0)
+ULONG GetOutlinePen(struct RastPort *rp) (A0)
+void LoadRGB32(struct ViewPort *vp, const ULONG *table) (A0,A1)
+ULONG SetChipRev(ULONG ChipRev) (D0)
+void SetABPenDrMd(struct RastPort *rp, ULONG apen, ULONG bpen, ULONG drawMode) (A1,D0,D1,D2)
+void GetRGB32(const struct ColorMap *cm, ULONG firstcolor, ULONG ncolors, ULONG *table) (A0,D0,D1,A1)
+==private
+void GfxSpare1() ()
+BOOL SetDefaultMonitor(UWORD monitor) (D0)
+==public
+struct BitMap *AllocBitMap(ULONG sizex, ULONG sizey, ULONG depth, ULONG flags, const struct BitMap *friend_bitmap) (D0,D1,D2,D3,A0)
+void FreeBitMap(struct BitMap *bm) (A0)
+LONG GetExtSpriteA(struct ExtSprite *sprite, const struct TagItem *tags) (A2,A1)
+==varargs
+LONG GetExtSprite(struct ExtSprite *sprite, ULONG firstTag, ...) (A2,A1)
+ULONG CoerceMode(struct ViewPort *RealViewPort, ULONG MonitorID, ULONG Flags) (A0,D0,D1)
+void ChangeVPBitMap(struct ViewPort *vp, struct BitMap *bm, struct DBufInfo *db) (A0,A1,A2)
+void ReleasePen(struct ColorMap *cm, ULONG n) (A0,D0)
+ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG flags) (A0,D0,D1,D2,D3,D4)
+ULONG GetBitMapAttr(const struct BitMap *bitmap, ULONG attribute) (A0,D1)
+struct DBufInfo *AllocDBufInfo(struct ViewPort *vp) (A0)
+void FreeDBufInfo(struct DBufInfo *db) (A1)
+ULONG SetOutlinePen(struct RastPort *rp, ULONG pen) (A0,D0)
+ULONG SetWriteMask(struct RastPort *rp, ULONG mask) (A0,D0)
+void SetMaxPen(struct RastPort *rp, ULONG maxpen) (A0,D0)
+void SetRGB32CM(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b) (A0,D0,D1,D2,D3)
+void ScrollRasterBF(struct RastPort *rp, WORD dx, WORD dy, WORD xMin, WORD yMin, WORD xMax, WORD yMax) (A1,D0,D1,D2,D3,D4,D5)
+LONG FindColor(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, LONG maxpen) (A3,D1,D2,D3,D4)
+==private
+void GfxSpare2() ()
+==public
+struct ExtSprite *AllocSpriteDataA(const struct BitMap *bitmap, const struct TagItem *tagList) (A2,A1)
+==varargs
+struct ExtSprite *AllocSpriteData(const struct BitMap *bitmap, ULONG firstTag, ...) (A2,A1)
+LONG ChangeExtSpriteA(struct ViewPort *vp, struct ExtSprite *oldsprite, struct ExtSprite *newsprite, const struct TagItem *tags) (A0,A1,A2,A3)
+==varargs
+LONG ChangeExtSprite(struct ViewPort *vp, struct ExtSprite *oldsprite, struct ExtSprite *newsprite, ULONG firstTag, ...) (A0,A1,A2,A3)
+void FreeSpriteData(struct ExtSprite *extsp) (A2)
+void SetRPAttrsA(struct RastPort *rp, const struct TagItem *tags) (A0,A1)
+==varargs
+void SetRPAttrs(struct RastPort *rp, ULONG firstTag, ...) (A0,A1)
+void GetRPAttrsA(struct RastPort *rp, const struct TagItem *tags) (A0,A1)
+==varargs
+void GetRPAttrs(struct RastPort *rp, ULONG firstTag, ...) (A0,A1)
+ULONG BestModeIDA(const struct TagItem *TagItems) (A0)
+==varargs
+ULONG BestModeID(ULONG firstTag, ...) (A0)
+==version 40
+void WriteChunkyPixels(struct RastPort *rp, UWORD xstart, UWORD ystart, UWORD xstop, UWORD ystop, UBYTE *array, LONG bytesperrow) (A0,D0,D1,D2,D3,A2,D4)
+==end
