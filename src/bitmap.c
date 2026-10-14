@@ -1342,7 +1342,12 @@ static void scaleRow(struct BitScaleArgs* args, const UWORD* source, UWORD* dest
     UWORD bits = 0, mask = 0, bit = 0x8000U >> (args->bsa_DestX & 15);
     ULONG output = 0;
     dest += args->bsa_DestX >> 4;
-    for (ULONG x = 0; x < args->bsa_SrcWidth; ++x) {
+    // The original reduction loop tests a signed WORD counter after its
+    // first output pixel. Larger extents stop there, rather than consuming
+    // the complete unsigned width recorded in BitScaleArgs.
+    ULONG source_width = shrink && args->bsa_SrcWidth > 32768 ? 1 : args->bsa_SrcWidth;
+
+    for (ULONG x = 0; x < source_width; ++x) {
         if (shrink && x) {
             axis.error += axis.increment;
             if (axis.error <= 0) { continue; }
@@ -1411,6 +1416,7 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
         ULONG source_y = 0;
         ULONG dest_y = 0;
         UWORD last_count = 1;
+        WORD remaining_rows = args->bsa_SrcHeight;
 
         while (source_y < args->bsa_SrcHeight) {
             const UWORD* source_row = (const UWORD*)(source->Planes[plane] +
@@ -1458,9 +1464,26 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
                 source_y += count;
                 ++dest_y;
             }
+
+            // Reduction tests the stored WORD remainder; equal/enlarged
+            // axes instead stop when their signed counter cannot decrement
+            // to a positive value. Keep this separate from reported height.
+            if (shrink_y) {
+                remaining_rows = (WORD)(remaining_rows - count);
+
+                if (remaining_rows <= 0) {
+                    break;
+                }
+            } else {
+                if (remaining_rows <= 1) {
+                    break;
+                }
+
+                --remaining_rows;
+            }
         }
 
-        args->bsa_DestHeight = dest_y;
+        args->bsa_DestHeight = equal_y ? args->bsa_SrcHeight : dest_y;
 
         if (!equal_y) {
             args->bsa_YDDA = axis.error;
