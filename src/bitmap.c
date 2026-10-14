@@ -124,6 +124,77 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
     }
 }
 
+// When planes disagree about overlap direction, keep the shared traversal.
+// Retain the source word spanning adjacent output words and read the next
+// output's source before storing the current output.
+static void copyAliasedRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x,
+    ULONG width, UBYTE minterm, BOOL backward)
+{
+    const UWORD* saved_source = NULL;
+    UWORD saved_bits = 0;
+    UWORD* pending = NULL;
+    UWORD pending_bits = 0;
+    UWORD pending_mask = 0;
+    ULONG remaining = width;
+
+    while (remaining) {
+        unsigned count;
+        ULONG offset;
+
+        if (backward) {
+            count = ((dest_x + remaining - 1) & 15) + 1;
+
+            if (count > remaining) {
+                count = remaining;
+            }
+
+            offset = remaining - count;
+        } else {
+            offset = width - remaining;
+            count = 16 - ((dest_x + offset) & 15);
+
+            if (count > remaining) {
+                count = remaining;
+            }
+        }
+
+        const UWORD* input = source + ((source_x + offset) >> 4);
+        unsigned source_shift = (source_x + offset) & 15;
+        UWORD first = input == saved_source ? saved_bits : *input;
+        UWORD bits = first << source_shift;
+
+        if (source_shift + count > 16) {
+            UWORD second = input + 1 == saved_source ? saved_bits : input[1];
+
+            bits |= second >> (16 - source_shift);
+            saved_source = backward ? input : input + 1;
+            saved_bits = backward ? first : second;
+        } else {
+            saved_source = input;
+            saved_bits = first;
+        }
+
+        if (pending) {
+            UWORD old = *pending;
+
+            *pending = (old & ~pending_mask) | (combine(pending_bits, old, minterm) & pending_mask);
+        }
+
+        unsigned shift = (dest_x + offset) & 15;
+
+        pending = dest + ((dest_x + offset) >> 4);
+        pending_mask = (0xffffUL >> (16 - count)) << (16 - shift - count);
+        pending_bits = bits >> shift;
+        remaining -= count;
+    }
+
+    if (pending) {
+        UWORD old = *pending;
+
+        *pending = (old & ~pending_mask) | (combine(pending_bits, old, minterm) & pending_mask);
+    }
+}
+
 ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"),
     UWORD source_y asm("d1"), struct BitMap* dest asm("a1"), UWORD dest_x asm("d2"),
     UWORD dest_y asm("d3"), UWORD width asm("d4"), UWORD height asm("d5"),
@@ -131,7 +202,7 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
     struct GfxBase* graphics asm("a6"))
 {
     // CPU traversal handles horizontal overlap without a temporary A plane.
-    // Row order is shared by every selected plane, as in the original library.
+    // Traversal order is shared by every selected plane, as in the original library.
     (void)temporary;
 
     if (!width || !height) {
@@ -152,6 +223,7 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
     }
 
     BOOL reverse_rows = FALSE;
+    BOOL reverse_words = FALSE;
 
     for (unsigned plane = depth; plane > 0; --plane) {
         if (!(planes & (1UL << (plane - 1)))) {
@@ -167,10 +239,16 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
 
         if (source->BytesPerRow != dest->BytesPerRow) {
             reverse_rows = (dest_x & 15) >= (source_x & 15);
+            reverse_words = !reverse_rows;
         } else if (output >= input) {
             ULONG last_word = input + (((source_x & 15) + width - 1) >> 4) * 2;
 
             reverse_rows = (dest_x & 15) <= (source_x & 15) || output > last_word;
+            reverse_words = (dest_x & 15) <= (source_x & 15) || output <= last_word;
+        } else {
+            ULONG last_word = output + (((dest_x & 15) + width - 1) >> 4) * 2;
+
+            reverse_words = (dest_x & 15) < (source_x & 15) && last_word < input;
         }
 
         break;
@@ -195,11 +273,21 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
             input += (ULONG)source_y * source->BytesPerRow;
         }
 
-        // Preserve the source bits while copying each row. Row traversal uses
-        // the common overlap decision rather than this plane's address order.
+        // The usual direction needs no read-ahead buffer. Opposing planes
+        // retain the common traversal and its source-word read-ahead order.
         int backward = !constant && ((ULONG)output + (dest_x >> 3) > (ULONG)input + (source_x >> 3) ||
             ((ULONG)output + (dest_x >> 3) == (ULONG)input + (source_x >> 3) && (dest_x & 7) > (source_x & 7)));
+        BOOL read_ahead = !constant && backward != reverse_words;
         LONG source_step = source->BytesPerRow, dest_step = dest->BytesPerRow;
+
+        if (read_ahead && source_step == dest_step) {
+            ULONG first_source = (ULONG)input + (source_x >> 4) * 2;
+            ULONG last_source = (ULONG)input + ((source_x + width - 1) >> 4) * 2;
+            ULONG first_dest = (ULONG)output + (dest_x >> 4) * 2;
+            ULONG last_dest = (ULONG)output + ((dest_x + width - 1) >> 4) * 2;
+
+            read_ahead = first_source <= last_dest && first_dest <= last_source;
+        }
 
         if (reverse_rows) {
             if (!constant) {
@@ -212,7 +300,11 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
         }
 
         for (unsigned row = 0; row < height; ++row) {
-            copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, backward);
+            if (read_ahead) {
+                copyAliasedRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, reverse_words);
+            } else {
+                copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, reverse_words);
+            }
 
             if (row + 1 < height) {
                 if (!constant) {
