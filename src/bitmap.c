@@ -1217,7 +1217,16 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
                     WaitBlit();
                 }
 
-                for (unsigned row = 1; row < count; ++row) {
+                // The original duplicates rows with a 10-bit transfer height;
+                // zero encodes 1024 rows. Its reported extent still uses the
+                // full count, even when the actual copy wraps at that limit.
+                unsigned copies = (count - 1) & 1023;
+
+                if (count > 1 && !copies) {
+                    copies = 1024;
+                }
+
+                for (unsigned row = 1; row <= copies; ++row) {
                     copyRow((const UWORD*)dest_row, (UWORD*)(dest_row + row * dest->BytesPerRow),
                         args->bsa_DestX, args->bsa_DestX, args->bsa_DestWidth, 0xc0, 0);
                 }
