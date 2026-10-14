@@ -20,6 +20,7 @@ struct GraphicsLibrary {
     struct ChipsetGraphicsDisplay* chipset;
     BOOL chipset_selected;
     struct MonitorSpec* initial_monitor;
+    BOOL initial_monitor_open;
     UBYTE initial_frequency;
     struct TextFont* initial_fonts[2];
 };

@@ -48,7 +48,24 @@ BOOL pcInitDefaultMonitor(struct GfxBase* graphics)
         return FALSE;
     }
 
-    return FindDisplayInfo(0) != NULL;
+    if (!FindDisplayInfo(0)) {
+        return FALSE;
+    }
+
+    // Startup retains one reference for the default display, as the original
+    // initializer does when attaching its default-ID monitor information.
+    struct MonitorSpec* opened = OpenMonitor(NULL, 0);
+
+    if (opened != library->initial_monitor) {
+        if (opened) {
+            CloseMonitor(opened);
+        }
+
+        return FALSE;
+    }
+
+    library->initial_monitor_open = TRUE;
+    return TRUE;
 }
 
 void pcFreeDefaultMonitor(struct GfxBase* graphics)
@@ -59,6 +76,11 @@ void pcFreeDefaultMonitor(struct GfxBase* graphics)
 
     if (!monitor) {
         return;
+    }
+
+    if (library->initial_monitor_open) {
+        CloseMonitor(monitor);
+        library->initial_monitor_open = FALSE;
     }
 
     Remove((struct Node*)monitor);
