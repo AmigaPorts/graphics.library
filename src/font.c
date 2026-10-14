@@ -136,13 +136,14 @@ WORD pcWeighTAMatch(const struct TextAttr* requested asm("a0"), const struct Tex
         if (first && second) {
             ULONG larger = first > second ? first : second;
             ULONG smaller = first > second ? second : first;
-            // Retain the original score arithmetic, including its WORD result
-            // and 32-bit shift. Do not change which existing strike wins.
-            adjustment = (LONG)((larger << 5) / smaller) - 32;
+
+            // Unequal aspect ratios reduce the match weight. Retain the
+            // original 32-bit shift when forming the scaled ratio.
+            adjustment = (LONG)((smaller << 5) / larger) - 32;
         }
-    	
+
         ULONG match = GetTagData(FONT_TAG_LEGACY_MATCH, 0, request_tags);
-    	
+
         if (match && match != (tags ? GetTagData(FONT_TAG_LEGACY_MATCH, 0, tags) : 0)) {
 	        --adjustment;
         }
