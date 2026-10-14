@@ -130,8 +130,8 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
     UBYTE minterm asm("d6"), UBYTE planes asm("d7"), UWORD* temporary asm("a2"),
     struct GfxBase* graphics asm("a6"))
 {
-    // CPU traversal preserves an overlapping source without a temporary A plane.
-    // Each selected plane retains its own stride, including interleaved bitmaps.
+    // CPU traversal handles horizontal overlap without a temporary A plane.
+    // Row order is shared by every selected plane, as in the original library.
     (void)temporary;
 
     if (!width || !height) {
@@ -149,6 +149,31 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
     if (chipset) {
         OwnBlitter();
         pcWaitBlit(graphics);
+    }
+
+    BOOL reverse_rows = FALSE;
+
+    for (unsigned plane = depth; plane > 0; --plane) {
+        if (!(planes & (1UL << (plane - 1)))) {
+            continue;
+        }
+
+        // Overlap setup searches from the highest selected plane. A horizontal
+        // overlap may still traverse rows forward while copying words backward.
+        ULONG input = (ULONG)source->Planes[plane - 1] + (ULONG)source_y * source->BytesPerRow +
+            (source_x >> 4) * 2;
+        ULONG output = (ULONG)dest->Planes[plane - 1] + (ULONG)dest_y * dest->BytesPerRow +
+            (dest_x >> 4) * 2;
+
+        if (source->BytesPerRow != dest->BytesPerRow) {
+            reverse_rows = (dest_x & 15) >= (source_x & 15);
+        } else if (output >= input) {
+            ULONG last_word = input + (((source_x & 15) + width - 1) >> 4) * 2;
+
+            reverse_rows = (dest_x & 15) <= (source_x & 15) || output > last_word;
+        }
+
+        break;
     }
 
     for (unsigned plane = 0; plane < depth; ++plane) {
@@ -170,14 +195,17 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
             input += (ULONG)source_y * source->BytesPerRow;
         }
 
-        // For a shared bitmap the row stride is identical, so address/bit order
-        // selects a memmove-style traversal for horizontal and vertical overlap.
+        // Preserve the source bits while copying each row. Row traversal uses
+        // the common overlap decision rather than this plane's address order.
         int backward = !constant && ((ULONG)output + (dest_x >> 3) > (ULONG)input + (source_x >> 3) ||
             ((ULONG)output + (dest_x >> 3) == (ULONG)input + (source_x >> 3) && (dest_x & 7) > (source_x & 7)));
         LONG source_step = source->BytesPerRow, dest_step = dest->BytesPerRow;
 
-        if (backward) {
-            input += (ULONG)(height - 1) * source_step;
+        if (reverse_rows) {
+            if (!constant) {
+                input += (ULONG)(height - 1) * source_step;
+            }
+
             output += (ULONG)(height - 1) * dest_step;
             source_step = -source_step;
             dest_step = -dest_step;
