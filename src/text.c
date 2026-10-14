@@ -710,9 +710,11 @@ ULONG pcTextFit(struct RastPort* port asm("a1"), CONST_STRPTR string asm("a0"), 
         if (step < 0) {
 	        goto empty;
         }
-    	
-        UWORD advance_count = 0;
-    	
+
+        // Negative constraints retain their signed word value when selecting
+        // the fitted count; only nonnegative advances are divided by the step.
+        UWORD advance_count = (UWORD)max_advance;
+
         if (step && max_advance >= 0) {
             advance_count = (UWORD)max_advance / (UWORD)step;
             if (!advance_count) {
