@@ -1104,10 +1104,45 @@ static UWORD scaleStep(struct ScaleAxis* axis)
     return count;
 }
 
+static void scaleCopyRows(const UWORD* source, UWORD* dest, UWORD source_x, UWORD dest_x,
+    UWORD width, UWORD rows, UWORD source_stride, UWORD dest_stride)
+{
+    // Scaling's original row copies encode width and height in one 16-bit
+    // extent. Preserve the resulting pixels and row steps when either field
+    // wraps, while the caller retains its full reported dimensions.
+    unsigned words = ((dest_x & 15) + width + 15) >> 4;
+    UWORD extent = words | (rows << 6);
+    unsigned columns = extent & 63;
+    unsigned copies = extent >> 6;
+
+    if (!columns) {
+        columns = 64;
+    }
+
+    if (!copies) {
+        copies = 1024;
+    }
+
+    LONG copied_width = (LONG)columns * 16 - (dest_x & 15) - ((-(dest_x + width)) & 15);
+    LONG source_step = (WORD)(source_stride - words * 2) + (LONG)columns * 2;
+    LONG dest_step = (WORD)(dest_stride - words * 2) + (LONG)columns * 2;
+
+    if (copied_width <= 0) {
+        return;
+    }
+
+    for (unsigned row = 0; row < copies; ++row) {
+        copyRow(source, dest, source_x, dest_x, copied_width, 0xc0, 0);
+        source = (const UWORD*)((const UBYTE*)source + source_step);
+        dest = (UWORD*)((UBYTE*)dest + dest_step);
+    }
+}
+
 static void scaleRow(struct BitScaleArgs* args, const UWORD* source, UWORD* dest)
 {
     if (args->bsa_XSrcFactor == args->bsa_XDestFactor) {
-        copyRow(source, dest, args->bsa_SrcX, args->bsa_DestX, args->bsa_SrcWidth, 0xc0, 0);
+        scaleCopyRows(source, dest, args->bsa_SrcX, args->bsa_DestX, args->bsa_SrcWidth, 1,
+            args->bsa_SrcBitMap->BytesPerRow, args->bsa_DestBitMap->BytesPerRow);
         args->bsa_DestWidth = args->bsa_SrcWidth;
         args->bsa_XDDA = 0;
         return;
@@ -1217,18 +1252,10 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
                     WaitBlit();
                 }
 
-                // The original duplicates rows with a 10-bit transfer height;
-                // zero encodes 1024 rows. Its reported extent still uses the
-                // full count, even when the actual copy wraps at that limit.
-                unsigned copies = (count - 1) & 1023;
-
-                if (count > 1 && !copies) {
-                    copies = 1024;
-                }
-
-                for (unsigned row = 1; row <= copies; ++row) {
-                    copyRow((const UWORD*)dest_row, (UWORD*)(dest_row + row * dest->BytesPerRow),
-                        args->bsa_DestX, args->bsa_DestX, args->bsa_DestWidth, 0xc0, 0);
+                if (count > 1) {
+                    scaleCopyRows((const UWORD*)dest_row, (UWORD*)(dest_row + dest->BytesPerRow),
+                        args->bsa_DestX, args->bsa_DestX, args->bsa_DestWidth, count - 1,
+                        0, dest->BytesPerRow);
                 }
 
                 if (chipset && count > 1) {
