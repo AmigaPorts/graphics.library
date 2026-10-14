@@ -125,67 +125,75 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
 }
 
 // When planes disagree about overlap direction, keep the shared traversal.
-// Retain the source word spanning adjacent output words and read the next
-// output's source before storing the current output.
-static void copyAliasedRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x,
-    ULONG width, UBYTE minterm, BOOL backward)
+// Read the next output's source before storing the current output, including
+// across row boundaries where unequal pitches can make the rows overlap.
+static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x, ULONG width, ULONG height,
+    LONG source_step, LONG dest_step, UBYTE minterm, BOOL backward)
 {
-    const UWORD* saved_source = NULL;
-    UWORD saved_bits = 0;
     UWORD* pending = NULL;
     UWORD pending_bits = 0;
     UWORD pending_mask = 0;
-    ULONG remaining = width;
 
-    while (remaining) {
-        unsigned count;
-        ULONG offset;
+    for (ULONG row = 0; row < height; ++row) {
+        const UWORD* saved_source = NULL;
+        UWORD saved_bits = 0;
+        ULONG remaining = width;
 
-        if (backward) {
-            count = ((dest_x + remaining - 1) & 15) + 1;
+        while (remaining) {
+            unsigned count;
+            ULONG offset;
 
-            if (count > remaining) {
-                count = remaining;
+            if (backward) {
+                count = ((dest_x + remaining - 1) & 15) + 1;
+
+                if (count > remaining) {
+                    count = remaining;
+                }
+
+                offset = remaining - count;
+            } else {
+                offset = width - remaining;
+                count = 16 - ((dest_x + offset) & 15);
+
+                if (count > remaining) {
+                    count = remaining;
+                }
             }
 
-            offset = remaining - count;
-        } else {
-            offset = width - remaining;
-            count = 16 - ((dest_x + offset) & 15);
+            const UWORD* input = source + ((source_x + offset) >> 4);
+            unsigned source_shift = (source_x + offset) & 15;
+            UWORD first = input == saved_source ? saved_bits : *input;
+            UWORD bits = first << source_shift;
 
-            if (count > remaining) {
-                count = remaining;
+            if (source_shift + count > 16) {
+                UWORD second = input + 1 == saved_source ? saved_bits : input[1];
+
+                bits |= second >> (16 - source_shift);
+                saved_source = backward ? input : input + 1;
+                saved_bits = backward ? first : second;
+            } else {
+                saved_source = input;
+                saved_bits = first;
             }
+
+            if (pending) {
+                UWORD old = *pending;
+
+                *pending = (old & ~pending_mask) | (combine(pending_bits, old, minterm) & pending_mask);
+            }
+
+            unsigned shift = (dest_x + offset) & 15;
+
+            pending = dest + ((dest_x + offset) >> 4);
+            pending_mask = (0xffffUL >> (16 - count)) << (16 - shift - count);
+            pending_bits = bits >> shift;
+            remaining -= count;
         }
 
-        const UWORD* input = source + ((source_x + offset) >> 4);
-        unsigned source_shift = (source_x + offset) & 15;
-        UWORD first = input == saved_source ? saved_bits : *input;
-        UWORD bits = first << source_shift;
-
-        if (source_shift + count > 16) {
-            UWORD second = input + 1 == saved_source ? saved_bits : input[1];
-
-            bits |= second >> (16 - source_shift);
-            saved_source = backward ? input : input + 1;
-            saved_bits = backward ? first : second;
-        } else {
-            saved_source = input;
-            saved_bits = first;
+        if (row + 1 < height) {
+            source = (const UWORD*)((const UBYTE*)source + source_step);
+            dest = (UWORD*)((UBYTE*)dest + dest_step);
         }
-
-        if (pending) {
-            UWORD old = *pending;
-
-            *pending = (old & ~pending_mask) | (combine(pending_bits, old, minterm) & pending_mask);
-        }
-
-        unsigned shift = (dest_x + offset) & 15;
-
-        pending = dest + ((dest_x + offset) >> 4);
-        pending_mask = (0xffffUL >> (16 - count)) << (16 - shift - count);
-        pending_bits = bits >> shift;
-        remaining -= count;
     }
 
     if (pending) {
@@ -274,17 +282,23 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
         }
 
         // The usual direction needs no read-ahead buffer. Opposing planes
-        // retain the common traversal and its source-word read-ahead order.
-        int backward = !constant && ((ULONG)output + (dest_x >> 3) > (ULONG)input + (source_x >> 3) ||
-            ((ULONG)output + (dest_x >> 3) == (ULONG)input + (source_x >> 3) && (dest_x & 7) > (source_x & 7)));
+        // and overlapping unequal-pitch rasters retain the shared read order.
+        int backward = !constant &&
+            ((ULONG)output + (dest_x >> 3) > (ULONG)input + (source_x >> 3) ||
+                ((ULONG)output + (dest_x >> 3) == (ULONG)input + (source_x >> 3) && (dest_x & 7) > (source_x & 7)));
         BOOL read_ahead = !constant && backward != reverse_words;
         LONG source_step = source->BytesPerRow, dest_step = dest->BytesPerRow;
 
-        if (read_ahead && source_step == dest_step) {
+        if (!constant && (read_ahead || source_step != dest_step)) {
             ULONG first_source = (ULONG)input + (source_x >> 4) * 2;
             ULONG last_source = (ULONG)input + ((source_x + width - 1) >> 4) * 2;
             ULONG first_dest = (ULONG)output + (dest_x >> 4) * 2;
             ULONG last_dest = (ULONG)output + ((dest_x + width - 1) >> 4) * 2;
+
+            if (source_step != dest_step) {
+                last_source += (height - 1) * source_step;
+                last_dest += (height - 1) * dest_step;
+            }
 
             read_ahead = first_source <= last_dest && first_dest <= last_source;
         }
@@ -299,12 +313,15 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
             dest_step = -dest_step;
         }
 
+        if (read_ahead) {
+            copyAliasedRows((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, height, source_step,
+                dest_step, minterm, reverse_words);
+
+            continue;
+        }
+
         for (unsigned row = 0; row < height; ++row) {
-            if (read_ahead) {
-                copyAliasedRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, reverse_words);
-            } else {
-                copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, reverse_words);
-            }
+            copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, reverse_words);
 
             if (row + 1 < height) {
                 if (!constant) {
