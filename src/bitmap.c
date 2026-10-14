@@ -905,6 +905,15 @@ static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
         reverse_words = (dest_x & 15) < source_x && last_word < first_source;
     }
 
+    // Reverse-row setup uses an unsigned WORD product for the starting row,
+    // then the signed row step. Preserve that address even for disjoint data,
+    // where the CPU loop can otherwise keep its forward traversal.
+    if (reverse_rows && source_stride < 0) {
+        ULONG row_bias = (ULONG)(UWORD)source_stride - (ULONG)source_stride;
+
+        source = (const UWORD*)((const UBYTE*)source + (height - 1) * row_bias);
+    }
+
     for (unsigned plane = 0; plane < dest->Depth; ++plane) {
         if (!(port->Mask & (1UL << plane))) {
             continue;
