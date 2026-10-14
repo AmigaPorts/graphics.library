@@ -1065,7 +1065,7 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
             }
 
             ULONG remaining = width;
-            ULONG x = (UWORD)bounds->MinX;
+            LONG x = bounds->MinX;
 
             while (remaining) {
                 unsigned shift = x & 15;
