@@ -96,8 +96,13 @@ struct GfxBase* Init(ULONG segment asm("a0"), struct ExecBase* SysBase asm("a6")
     base->LibNode.lib_Version = LIBRARY_VERSION;
     base->LibNode.lib_Revision = LIBRARY_REVISION;
     base->LibNode.lib_IdString = (STRPTR)deviceIdString;
+
+    // The original keeps one permanent open reference. Open and Close do not
+    // change it, so Exec must not expunge the live library under memory pressure.
+    base->LibNode.lib_OpenCnt = 1;
+
     base->UtilBase = OpenLibrary("utility.library", 0);
-	
+
     if (!base->UtilBase || !pcInitGraphicsState(base)) {
 	    goto failed;
     }
