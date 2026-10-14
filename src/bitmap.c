@@ -1294,13 +1294,21 @@ static UWORD scaleStep(struct ScaleAxis* axis)
     return count;
 }
 
-static void scaleCopyRows(const UWORD* source, UWORD* dest, UWORD source_x, UWORD dest_x,
-    UWORD width, UWORD rows, UWORD source_stride, UWORD dest_stride)
+static UWORD scaleRowWords(UWORD x, UWORD width)
+{
+    // The inclusive row endpoint wraps before rounding to whole words.
+    UWORD last = (x & 15) + width - 1;
+
+    return (last >> 4) + 1;
+}
+
+static void scaleCopyRows(const UWORD* source, UWORD* dest, UWORD source_x, UWORD dest_x, UWORD width, UWORD rows,
+    UWORD source_stride, UWORD dest_stride)
 {
     // Scaling's original row copies encode width and height in one 16-bit
     // extent. Preserve the resulting pixels and row steps when either field
     // wraps, while the caller retains its full reported dimensions.
-    unsigned words = ((dest_x & 15) + width + 15) >> 4;
+    unsigned words = scaleRowWords(dest_x, width);
     UWORD extent = words | (rows << 6);
     unsigned columns = extent & 63;
     unsigned copies = extent >> 6;
@@ -1496,7 +1504,7 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
             if (!shrink_y && last_count > 1) {
                 // The original reports the final row-copy extent in YDDA
                 // when enlargement ends with duplicated rows, not the error.
-                UWORD words = ((args->bsa_DestX & 15) + args->bsa_DestWidth + 15) >> 4;
+                UWORD words = scaleRowWords(args->bsa_DestX, args->bsa_DestWidth);
                 args->bsa_YDDA = words | ((last_count - 1) << 6);
             }
         }
