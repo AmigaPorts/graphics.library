@@ -1,5 +1,5 @@
 # Open Source reimplementation of `graphics.library` for AmigaOS 3.x
-[![CMake](https://github.com/MBeijer/graphics.library/actions/workflows/cmake.yml/badge.svg)](https://github.com/MBeijer/graphics.library/actions/workflows/cmake.yml)
+[![CMake](https://github.com/amigaports/graphics.library/actions/workflows/cmake.yml/badge.svg)](https://github.com/amigaports/graphics.library/actions/workflows/cmake.yml)
 
 An open-source replacement for Kickstart's `graphics.library`, based on
 AmigaOS 3.2.3 behavior and preserving the classic API and Picasso96 compatibility.
