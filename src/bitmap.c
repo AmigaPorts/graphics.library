@@ -124,7 +124,7 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
     }
 }
 
-// When planes disagree about overlap direction, keep the shared traversal.
+// Overlapping rasters retain the traversal selected for the complete operation.
 // Read the next output's source before storing the current output, including
 // across row boundaries where unequal pitches can make the rows overlap.
 static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x, ULONG width, ULONG height,
@@ -884,6 +884,27 @@ static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
     source = (const UWORD*)((const UBYTE*)source + (LONG)source_y * source_stride + ((LONG)source_x >> 4) * 2);
     source_x &= 15;
 
+    // Template setup chooses one traversal from the first destination plane,
+    // then retains it for every selected plane, including shared storage.
+    ULONG first_source = (ULONG)source;
+    ULONG first_dest = (ULONG)dest->Planes[0] + (ULONG)dest_y * dest->BytesPerRow + (dest_x >> 4) * 2;
+    BOOL reverse_rows = FALSE;
+    BOOL reverse_words = FALSE;
+
+    if (source_stride != dest->BytesPerRow) {
+        reverse_rows = (dest_x & 15) >= source_x;
+        reverse_words = !reverse_rows;
+    } else if (first_dest >= first_source) {
+        ULONG last_word = first_source + ((source_x + width - 1) >> 4) * 2;
+
+        reverse_rows = (dest_x & 15) <= source_x || first_dest > last_word;
+        reverse_words = (dest_x & 15) <= source_x || first_dest <= last_word;
+    } else {
+        ULONG last_word = first_dest + (((dest_x & 15) + width - 1) >> 4) * 2;
+
+        reverse_words = (dest_x & 15) < source_x && last_word < first_source;
+    }
+
     for (unsigned plane = 0; plane < dest->Depth; ++plane) {
         if (!(port->Mask & (1UL << plane))) {
             continue;
@@ -897,6 +918,38 @@ static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
 
         const UBYTE* input = (const UBYTE*)source;
         UBYTE* output = dest->Planes[plane] + (ULONG)dest_y * dest->BytesPerRow;
+
+        ULONG source_start = (ULONG)input;
+        ULONG source_end = source_start + (LONG)(height - 1) * source_stride;
+
+        if (source_stride < 0) {
+            ULONG swap = source_start;
+
+            source_start = source_end;
+            source_end = swap;
+        }
+
+        source_end += ((source_x + width - 1) >> 4) * 2;
+
+        ULONG dest_start = (ULONG)output + (dest_x >> 4) * 2;
+        ULONG dest_end = (ULONG)output + (ULONG)(height - 1) * dest->BytesPerRow + ((dest_x + width - 1) >> 4) * 2;
+
+        if (source_start <= dest_end && dest_start <= source_end) {
+            LONG source_step = source_stride;
+            LONG dest_step = dest->BytesPerRow;
+
+            if (reverse_rows) {
+                input += (LONG)(height - 1) * source_step;
+                output += (LONG)(height - 1) * dest_step;
+                source_step = -source_step;
+                dest_step = -dest_step;
+            }
+
+            copyAliasedRows((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, height, source_step,
+                dest_step, minterm, reverse_words);
+
+            continue;
+        }
 
         for (unsigned row = 0; row < height; ++row) {
             copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, 0);
