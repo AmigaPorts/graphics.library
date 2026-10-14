@@ -1417,12 +1417,10 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
         ULONG dest_y = 0;
         UWORD last_count = 1;
         WORD remaining_rows = args->bsa_SrcHeight;
+        const UWORD* source_row = (const UWORD*)(source->Planes[plane] + (ULONG)args->bsa_SrcY * source->BytesPerRow);
+        UBYTE* dest_row = dest->Planes[plane] + (ULONG)args->bsa_DestY * dest->BytesPerRow;
 
         while (source_y < args->bsa_SrcHeight) {
-            const UWORD* source_row = (const UWORD*)(source->Planes[plane] +
-                (args->bsa_SrcY + source_y) * source->BytesPerRow);
-            UBYTE* dest_row = dest->Planes[plane] + (args->bsa_DestY + dest_y) * dest->BytesPerRow;
-
             // Equal-width copies observe both preceding DMA and task ownership.
             // Unequal-width CPU scaling retains caller-managed ordering.
             if (chipset_copy) {
@@ -1449,9 +1447,8 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
                 }
 
                 if (count > 1) {
-                    scaleCopyRows((const UWORD*)dest_row, (UWORD*)(dest_row + dest->BytesPerRow),
-                        args->bsa_DestX, args->bsa_DestX, args->bsa_DestWidth, count - 1,
-                        0, dest->BytesPerRow);
+                    scaleCopyRows((const UWORD*)dest_row, (UWORD*)(dest_row + (WORD)dest->BytesPerRow), args->bsa_DestX,
+                        args->bsa_DestX, args->bsa_DestWidth, count - 1, 0, dest->BytesPerRow);
                 }
 
                 if (chipset && count > 1) {
@@ -1481,6 +1478,14 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
 
                 --remaining_rows;
             }
+
+            // Single-row advances use a signed stride. Skipping or duplicating
+            // multiple rows instead multiplies the unsigned BytesPerRow.
+            LONG source_step = shrink_y && count > 1 ? (LONG)count * source->BytesPerRow : (WORD)source->BytesPerRow;
+            LONG dest_step = !shrink_y && count > 1 ? (LONG)count * dest->BytesPerRow : (WORD)dest->BytesPerRow;
+
+            source_row = (const UWORD*)((const UBYTE*)source_row + source_step);
+            dest_row += dest_step;
         }
 
         args->bsa_DestHeight = equal_y ? args->bsa_SrcHeight : dest_y;
