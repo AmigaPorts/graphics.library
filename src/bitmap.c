@@ -295,10 +295,10 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
             ULONG first_dest = (ULONG)output + (dest_x >> 4) * 2;
             ULONG last_dest = (ULONG)output + ((dest_x + width - 1) >> 4) * 2;
 
-            if (source_step != dest_step) {
-                last_source += (height - 1) * source_step;
-                last_dest += (height - 1) * dest_step;
-            }
+            // Equal-pitch rows can overlap a later row of the other raster
+            // even when their first-row spans do not intersect.
+            last_source += (height - 1) * source_step;
+            last_dest += (height - 1) * dest_step;
 
             read_ahead = first_source <= last_dest && first_dest <= last_source;
         }
