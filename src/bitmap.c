@@ -1513,11 +1513,26 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
 
 UWORD pcScalerDiv(UWORD factor asm("d0"), UWORD numerator asm("d1"), UWORD denominator asm("d2"))
 {
-    if (!denominator) { return 0; }
+    if (!denominator) {
+        return 0;
+    }
+
     ULONG product = (ULONG)factor * numerator;
-    ULONG quotient = product / denominator, remainder = product % denominator;
+
+    // The original word division retains the product on quotient overflow.
+    // Within the documented factor range its rounding step then adds one.
+    if (product >= ((ULONG)denominator << 16)) {
+        return product + 1;
+    }
+
+    ULONG quotient = product / denominator;
+    ULONG remainder = product % denominator;
+
     // Reduction counts selected source pixels, including position zero. Its
     // rounding threshold is the numerator, not the denominator used to enlarge.
-    if (numerator >= denominator ? 2 * remainder >= denominator : 2 * remainder > numerator) { ++quotient; }
+    if (numerator >= denominator ? 2 * remainder >= denominator : 2 * remainder > numerator) {
+        ++quotient;
+    }
+
     return quotient;
 }
