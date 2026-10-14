@@ -1078,14 +1078,14 @@ struct ActiveViewFields {
 // ActiViewCprSemaphore, including all readers and presentation. Select the
 // public ActiView/Modes/LOFlist/SHFlist and retain their native generations.
 // Blank Views use copinit->wait_forever; they require initialized copinit.
-// Unbound populated fields fail without changing selection or references.
+// Caller-owned lists retain public field selection without a native snapshot.
 // This allocates nothing and does not change monitors, invoke callbacks,
 // increment SpecialCounter, present pixels or implement all of LoadView.
 BOOL pcSelectViewFields(struct View* view, struct GfxBase* graphics);
 // Native LoadView software state and monitor lifecycle. Reserve native fields,
 // serialize with ActiViewCprSemaphore, and preserve counter/lookup/callback
 // ordering. do_monitor and outgoing ms_KillView use their existing ABIs. A
-// missing native field binding returns FALSE before changing public state.
+// missing native field binding does not suppress public state or callbacks.
 // The native display owner supplies palette/presentation and startup
 // integration around this shared state transition. No chipset registers are used.
 BOOL pcLoadViewState(struct View* view, struct GfxBase* graphics);

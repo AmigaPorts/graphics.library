@@ -4135,31 +4135,23 @@ static BOOL selectViewFields(struct ViewFieldSelection* selection, struct View* 
     selection->populated = view && view->LOFCprList;
 
     if (selection->populated) {
-        selection->display[0] = pcRetainMergedViewField(pcMergedViews(graphics), view->LOFCprList,
-            &selection->source_field[0]);
+        selection->display[0] =
+            pcRetainMergedViewField(pcMergedViews(graphics), view->LOFCprList, &selection->source_field[0]);
 
         if (!selection->display[0]) {
-            // Real chipset DMA consumes the caller's public Copper stream.
-            // Only software presentation requires a retained render snapshot.
-            if (!pcUsesChipset(graphics)) {
-                return FALSE;
-            }
-
+            // A monitor can supply its own public lists without a native
+            // render snapshot. Keep LoadView's state and callback lifecycle
+            // independent of whether the software renderer owns those lists.
             selection->source_field[0] = 0;
         }
 
         selection->streams[0] = view->LOFCprList->start;
 
         if (view->SHFCprList) {
-            selection->display[1] = pcRetainMergedViewField(pcMergedViews(graphics), view->SHFCprList,
-                &selection->source_field[1]);
+            selection->display[1] =
+                pcRetainMergedViewField(pcMergedViews(graphics), view->SHFCprList, &selection->source_field[1]);
 
             if (!selection->display[1]) {
-                if (!pcUsesChipset(graphics)) {
-                    pcReleaseViewDisplay(selection->display[0], graphics);
-                    return FALSE;
-                }
-
                 selection->source_field[1] = 0;
             }
 
