@@ -7,10 +7,15 @@
 void pcOwnBlitter(struct GfxBase* base asm("a6"));
 void pcDisownBlitter(struct GfxBase* base asm("a6"));
 
-// Submission is tested independently while dispatch/completion is unfinished.
-// The public vector table must not expose these until the server is ready.
+// Public backend entries. The framebuffer backend silently declines these
+// hardware-only requests without modifying nodes or signaling completion.
 void pcQBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"));
 void pcQBSBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"));
+
+// Shared submission for a backend that supplies the real blitter and server.
+// The framebuffer's public entries do not submit to this queue.
+void pcQueueBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"));
+void pcQueueBSBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"));
 
 // Shared queue execution, called with interrupt exclusion by the output
 // backend. It must supply the callback's real register context, establish

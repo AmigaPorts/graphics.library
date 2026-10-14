@@ -2,10 +2,14 @@
 // Software palette storage through the public ColorMap layout. ViewPort
 // presentation and palette ownership are separate public operations.
 #include "internal/color.h"
+#include "internal/backend.h"
 #include "internal/copper.h"
 #include "internal/library.h"
 #include "internal/monitor.h"
 #include "internal/native.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset.h"
+#endif
 
 #include <exec/execbase.h>
 #include <exec/memory.h>
@@ -508,10 +512,14 @@ void pcUpdateNativeViewportPalette(struct ViewPort* viewport, ViewBackgroundFunc
 
 void pcUpdateNativeViewBackground(struct MonitorSpec* monitor, struct GfxBase* graphics)
 {
-    (void)monitor;
     const struct View* view = graphics->ActiView;
 
     if (!view || !view->ViewPort) {
+#if GRAPHICS_CHIPSET
+        if (pcUsesChipset(graphics)) {
+            pcUpdateChipsetBackground(NULL, 0, monitor, graphics);
+        }
+#endif
         return;
     }
 
@@ -519,6 +527,7 @@ void pcUpdateNativeViewBackground(struct MonitorSpec* monitor, struct GfxBase* g
     // lies above the comparison limit. Equal positions retain the earlier one.
     const struct ViewPort* selected = view->ViewPort;
     WORD top = 10000;
+    ULONG selected_modes = 0;
 
     for (const struct ViewPort* viewport = view->ViewPort; viewport; viewport = viewport->Next) {
         if (viewport->Modes & VP_HIDE) {
@@ -537,9 +546,18 @@ void pcUpdateNativeViewBackground(struct MonitorSpec* monitor, struct GfxBase* g
         if (y < top) {
             top = y;
             selected = viewport;
+            selected_modes = modes;
         }
     }
 
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcUpdateChipsetBackground(selected, selected_modes, monitor, graphics);
+    }
+#else
+    (void)monitor;
+    (void)selected_modes;
+#endif
     const struct ColorMap* map = selected->ColorMap;
 
     if (!map) {

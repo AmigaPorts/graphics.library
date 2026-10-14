@@ -15,6 +15,7 @@ SECTIONS
 
         /* Shell entry precedes Resident data, independent of object order. */
         KEEP(*(.text.entry))
+        KEEP(*(.rodata.romtag))
 
         *(.text .text.* .rodata .rodata.*)
         *(.eh_frame)

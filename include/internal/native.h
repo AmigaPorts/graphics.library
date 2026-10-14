@@ -5,6 +5,7 @@
 #include "internal/sprite.h"
 #include <exec/interrupts.h>
 #include <exec/tasks.h>
+#include <devices/timer.h>
 
 struct NativeBitmapReply {
     struct NativeBitmapReply* next;
@@ -34,12 +35,17 @@ struct GraphicsDBufInfo {
 
 ULONG pcSetChipRev(ULONG requested asm("d0"), struct GfxBase* graphics asm("a6"));
 
-// CPU bitmap operations complete before returning. This entry belongs to the
-// synchronous native backend; an asynchronous drawing owner must own its wait.
-void pcWaitBlit(void);
+// CPU bitmap operations complete before returning. The chipset backend waits
+// for the real blitter, independently of the shared ownership queue.
+void pcWaitBlit(struct GfxBase* graphics asm("a6"));
+
+// Logical scan position within the native software frame. The firmware
+// framebuffer does not expose the monitor's physical scanout position.
+ULONG pcVBeamPos(struct GfxBase* graphics asm("a6"));
 
 // Persistent native presentation state. The display semaphore protects every
-// field below except the interrupt/task notification and shutdown handshake.
+// field below except the interrupt/task notification, frame clock and shutdown
+// handshake. Frame-clock snapshots use interrupt exclusion instead.
 struct NativeGraphicsDisplay {
     struct GraphicsFramebuffer output;
     struct ViewFieldBuffers* buffers[2];
@@ -56,7 +62,13 @@ struct NativeGraphicsDisplay {
     ULONG blank_color;
     struct Task task;
     struct Interrupt frame;
+    struct timerequest timer;
+    struct EClockVal frame_start;
+    ULONG frame_ticks;
     struct GfxBase* graphics;
+    struct Task* starting;
+    ULONG started_signal;
+    ULONG frame_signal;
     struct Task* stopping;
     ULONG stopped_signal;
     UBYTE* stack;

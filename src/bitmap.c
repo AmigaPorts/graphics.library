@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 // Independent CPU implementation of the Amiga planar bitmap operations.
 #include "internal/bitmap.h"
+#include "internal/backend.h"
+#include "internal/blitter.h"
 #include "internal/memory.h"
+#include "internal/native.h"
 #include "internal/rastport.h"
 
 #include <exec/execbase.h>
@@ -124,81 +127,109 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
 ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"),
     UWORD source_y asm("d1"), struct BitMap* dest asm("a1"), UWORD dest_x asm("d2"),
     UWORD dest_y asm("d3"), UWORD width asm("d4"), UWORD height asm("d5"),
-    UBYTE minterm asm("d6"), UBYTE planes asm("d7"), UWORD* temporary asm("a2"))
+    UBYTE minterm asm("d6"), UBYTE planes asm("d7"), UWORD* temporary asm("a2"),
+    struct GfxBase* graphics asm("a6"))
 {
     // CPU traversal preserves an overlapping source without a temporary A plane.
     // Each selected plane retains its own stride, including interleaved bitmaps.
     (void)temporary;
-	
+
     if (!width || !height) {
-	    return 0;
+        return 0;
     }
-	
+
     unsigned depth = source->Depth < dest->Depth ? source->Depth : dest->Depth;
     ULONG count = 0;
     minterm &= 0xf0;
-	
+
+    BOOL chipset = depth && (planes & ((1UL << depth) - 1)) && pcUsesChipset(graphics);
+
+    // The original owns through the public vectors, then waits internally.
+    // Observe the previous owner's DMA before reading or writing any plane.
+    if (chipset) {
+        OwnBlitter();
+        pcWaitBlit(graphics);
+    }
+
     for (unsigned plane = 0; plane < depth; ++plane) {
         if (!(planes & (1UL << plane))) {
-	        continue;
+            continue;
         }
-    	
+
         ++count;
-    	
+
         if (minterm == 0xa0) {
-	        continue;
+            continue;
         }
-    	
+
         const UBYTE* input = source->Planes[plane];
         UBYTE* output = dest->Planes[plane] + (ULONG)dest_y * dest->BytesPerRow;
         int constant = !input || (ULONG)input == 0xffffffff;
-    	
+
         if (!constant) {
-	        input += (ULONG)source_y * source->BytesPerRow;
+            input += (ULONG)source_y * source->BytesPerRow;
         }
-    	
+
         // For a shared bitmap the row stride is identical, so address/bit order
         // selects a memmove-style traversal for horizontal and vertical overlap.
         int backward = !constant && ((ULONG)output + (dest_x >> 3) > (ULONG)input + (source_x >> 3) ||
             ((ULONG)output + (dest_x >> 3) == (ULONG)input + (source_x >> 3) && (dest_x & 7) > (source_x & 7)));
         LONG source_step = source->BytesPerRow, dest_step = dest->BytesPerRow;
-    	
+
         if (backward) {
             input += (ULONG)(height - 1) * source_step;
             output += (ULONG)(height - 1) * dest_step;
             source_step = -source_step;
             dest_step = -dest_step;
         }
-    	
+
         for (unsigned row = 0; row < height; ++row) {
             copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, backward);
-        	
+
             if (row + 1 < height) {
                 if (!constant) {
-	                input += source_step;
+                    input += source_step;
                 }
-            	
+
                 output += dest_step;
             }
         }
     }
-	
+
+    if (chipset) {
+        DisownBlitter();
+    }
+
     return count;
 }
 
-void pcBltClear(APTR memory asm("a1"), ULONG byte_count asm("d0"), ULONG flags asm("d1"))
+void pcBltClear(APTR memory asm("a1"), ULONG byte_count asm("d0"), ULONG flags asm("d1"),
+    struct GfxBase* graphics asm("a6"))
 {
-    if (flags & 2) {
-	    byte_count = (byte_count >> 16) * (byte_count & 0xffff);
+    BOOL chipset = pcUsesChipset(graphics);
+
+    // The original acquires internally, even for a zero byte count. Observe
+    // both the owning task and its last DMA before writing the destination.
+    if (chipset) {
+        pcOwnBlitter(graphics);
+        pcWaitBlit(graphics);
     }
-	
+
+    if (flags & 2) {
+        byte_count = (byte_count >> 16) * (byte_count & 0xffff);
+    }
+
     UWORD pattern = flags & 4 ? flags >> 16 : 0;
     UWORD* dest = memory;
-	
+
     // The public interface takes an even address and byte count. Completion is
     // synchronous, including when the caller does not request a wait (bit zero).
     for (ULONG words = byte_count >> 1; words; --words) {
-	    *dest++ = pattern;
+        *dest++ = pattern;
+    }
+
+    if (chipset) {
+        pcDisownBlitter(graphics);
     }
 }
 
@@ -228,6 +259,14 @@ static void setBitmap(struct BitMap* map, UBYTE pen, UBYTE mask, struct GfxBase*
         }
     }
 	
+    BOOL chipset = interleaved && pcUsesChipset(graphics);
+
+    // Planar fills use BltClear's ownership. Interleaved storage has its own
+    // native boundary, including calls with no selected planes.
+    if (chipset) {
+        pcOwnBlitter(graphics);
+    }
+
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(mask & (1U << plane))) {
 	        continue;
@@ -238,6 +277,10 @@ static void setBitmap(struct BitMap* map, UBYTE pen, UBYTE mask, struct GfxBase*
                 pen & (1U << plane) ? 0xffff0006UL : 2);
         } else {
             UWORD value = pen & (1U << plane) ? 0xffff : 0;
+
+            if (chipset) {
+                pcWaitBlit(graphics);
+            }
         	
             for (ULONG y = 0; y < map->Rows; ++y) {
                 UWORD* row = (UWORD*)(map->Planes[plane] + y * stride);
@@ -247,6 +290,10 @@ static void setBitmap(struct BitMap* map, UBYTE pen, UBYTE mask, struct GfxBase*
                 }
             }
         }
+    }
+
+    if (chipset) {
+        pcDisownBlitter(graphics);
     }
 }
 
@@ -278,6 +325,15 @@ void pcSetRast(struct RastPort* port asm("a1"), UBYTE pen asm("d0"), struct GfxB
         }
     	
         struct BitMap* map = port->BitMap;
+
+        // The visible-clip path owns and waits even with an empty write mask.
+        // Keep the layer locked until the corresponding bitmap writes finish.
+        BOOL chipset = pcUsesChipset(graphics);
+
+        if (chipset) {
+            pcOwnBlitter(graphics);
+            pcWaitBlit(graphics);
+        }
     	
         for (unsigned plane = 0; plane < map->Depth; ++plane) {
             if (!(port->Mask & (1U << plane))) {
@@ -290,6 +346,10 @@ void pcSetRast(struct RastPort* port asm("a1"), UBYTE pen asm("d0"), struct GfxB
                 UWORD* row = (UWORD*)(map->Planes[plane] + y * map->BytesPerRow);
                 copyRow(NULL, row, 0, bounds->MinX, (LONG)bounds->MaxX - bounds->MinX + 1, minterm, FALSE);
             }
+        }
+
+        if (chipset) {
+            pcDisownBlitter(graphics);
         }
     }
 	
@@ -306,6 +366,7 @@ struct TemplateData {
     WORD source_stride;
     WORD dest_x;
     WORD dest_y;
+    struct GfxBase* graphics;
 };
 
 struct BitmapData {
@@ -662,42 +723,56 @@ void pcBltMaskBitMapRastPort(const struct BitMap* source asm("a0"), WORD source_
 }
 
 static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
-    const struct RastPort* port, UWORD dest_x, UWORD dest_y, UWORD width, UWORD height, LONG source_stride)
+    const struct RastPort* port, UWORD dest_x, UWORD dest_y, UWORD width, UWORD height, LONG source_stride,
+    struct GfxBase* graphics)
 {
     struct BitMap* dest = port->BitMap;
-	
+
     if (!width || !height) {
-	    return;
+        return;
     }
-	
+
+    // The original acquires for every nonempty bitmap, including a zero
+    // plane mask. Each clipped rectangle owns and waits independently.
+    BOOL chipset = dest->Depth && pcUsesChipset(graphics);
+
+    if (chipset) {
+        OwnBlitter();
+        pcWaitBlit(graphics);
+    }
+
     // Text anchors its scratch raster at logical x=0 and passes a negative
     // left extent for kerned or italic glyphs. Normalize that signed coordinate
     // before the unsigned word extraction loop.
     source = (const UWORD*)((const UBYTE*)source + (LONG)source_y * source_stride + ((LONG)source_x >> 4) * 2);
     source_x &= 15;
-	
+
     for (unsigned plane = 0; plane < dest->Depth; ++plane) {
         if (!(port->Mask & (1UL << plane))) {
-	        continue;
+            continue;
         }
-    	
+
         UBYTE minterm = port->minterms[plane] & 0xf0;
-    	
+
         if (minterm == 0xa0) {
-	        continue;
+            continue;
         }
-    	
+
         const UBYTE* input = (const UBYTE*)source;
         UBYTE* output = dest->Planes[plane] + (ULONG)dest_y * dest->BytesPerRow;
-    	
+
         for (unsigned row = 0; row < height; ++row) {
             copyRow((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, minterm, 0);
-        	
+
             if (row + 1 < height) {
-	            input += source_stride;
-            	output += dest->BytesPerRow;
+                input += source_stride;
+                output += dest->BytesPerRow;
             }
         }
+    }
+
+    if (chipset) {
+        DisownBlitter();
     }
 }
 
@@ -706,12 +781,13 @@ static ULONG templateRegion(struct Hook* hook asm("a0"), const struct FillMessag
 {
     const struct TemplateData* data = hook->h_Data;
     const struct Rectangle* bounds = &message->bounds;
-	
+
     drawTemplate(data->source, data->source_x + message->offset_x - data->dest_x,
         message->offset_y - data->dest_y, port, bounds->MinX, bounds->MinY,
-        (LONG)bounds->MaxX - bounds->MinX + 1, (LONG)bounds->MaxY - bounds->MinY + 1, data->source_stride);
-    
-	return 0;
+        (LONG)bounds->MaxX - bounds->MinX + 1, (LONG)bounds->MaxY - bounds->MinY + 1,
+        data->source_stride, data->graphics);
+
+    return 0;
 }
 
 void pcBltTemplate(CONST PLANEPTR source asm("a0"), WORD source_x asm("d0"), WORD source_stride asm("d1"),
@@ -719,114 +795,131 @@ void pcBltTemplate(CONST PLANEPTR source asm("a0"), WORD source_x asm("d0"), WOR
     WORD width asm("d4"), WORD height asm("d5"), struct GfxBase* graphics asm("a6"))
 {
     if (width <= 0 || height <= 0) {
-	    return;
+        return;
     }
-	
+
     if (!port->Layer) {
-        drawTemplate((const UWORD*)source, source_x, 0, port, dest_x, dest_y, width, height, source_stride);
-       
-    	return;
+        drawTemplate((const UWORD*)source, source_x, 0, port, dest_x, dest_y, width, height, source_stride, graphics);
+
+        return;
     }
-	
+
     struct Library* LayersBase = (APTR)graphics->gb_LayersBase;
-    struct TemplateData data = {(const UWORD*)source, source_x, source_stride, dest_x, dest_y};
-	
+    struct TemplateData data = {(const UWORD*)source, source_x, source_stride, dest_x, dest_y, graphics};
+
     struct Hook hook = {0};
     hook.h_Entry = (ULONG (*)())templateRegion;
     hook.h_Data = &data;
-	
+
     struct Rectangle bounds = {dest_x, dest_y, (WORD)(dest_x + width - 1), (WORD)(dest_y + height - 1)};
-   
-	DoHookClipRects(&hook, port, &bounds);
+
+    DoHookClipRects(&hook, port, &bounds);
 }
 
 // Pattern and mask coordinates are independent: patterns follow the layer's
 // logical origin; the stencil follows the caller's requested rectangle.
 static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask,
-    UWORD mask_stride, const struct Rectangle* bounds, LONG pattern_x, LONG pattern_y, LONG mask_x, LONG mask_y)
+    UWORD mask_stride, const struct Rectangle* bounds, LONG pattern_x, LONG pattern_y, LONG mask_x, LONG mask_y,
+    struct GfxBase* graphics)
 {
     if (bounds->MaxX < bounds->MinX || bounds->MaxY < bounds->MinY) {
-	    return;
+        return;
     }
-	
+
+    // Both the solid and patterned original paths own each clipped rectangle,
+    // even when its plane mask is empty. Wait before reading the pattern or
+    // stencil as those can also be destinations of an earlier DMA transfer.
+    BOOL chipset = pcUsesChipset(graphics);
+
+    if (chipset) {
+        pcOwnBlitter(graphics);
+        pcWaitBlit(graphics);
+    }
+
     ULONG width = (LONG)bounds->MaxX - bounds->MinX + 1;
     ULONG height = (LONG)bounds->MaxY - bounds->MinY + 1;
-	
+
     unsigned pattern_power = port->AreaPtSz < 0 ? -port->AreaPtSz : port->AreaPtSz;
     ULONG pattern_rows = port->AreaPtrn ? 1UL << pattern_power : 1;
-	unsigned rotation = ((ULONG)bounds->MinX - pattern_x) & 15;
-	
+    unsigned rotation = ((ULONG)bounds->MinX - pattern_x) & 15;
+
     for (unsigned plane = 0; plane < dest->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
-	        continue;
+            continue;
         }
-    	
+
         UBYTE minterm = port->minterms[plane] & 0xf0;
-    	
+
         if (minterm == 0xa0) {
-	        continue;
+            continue;
         }
-    	
+
         const UWORD* pattern = port->AreaPtrn;
-    	
+
         if (pattern && port->AreaPtSz < 0) {
-	        pattern += plane * pattern_rows;
+            pattern += plane * pattern_rows;
         }
-    	
+
         UBYTE* output = dest->Planes[plane] + (LONG)bounds->MinY * dest->BytesPerRow;
         const UBYTE* input = (const UBYTE*)mask;
-    	
+
         if (input) {
-	        input += mask_y * mask_stride;
+            input += mask_y * mask_stride;
         }
-    	
+
         for (ULONG y = 0; y < height; ++y) {
             UWORD bits = pattern ? pattern[((ULONG)pattern_y + y) & (pattern_rows - 1)] : 0xffff;
-        	
+
             if (rotation) {
-	            bits = (bits >> rotation) | (bits << (16 - rotation));
+                bits = (bits >> rotation) | (bits << (16 - rotation));
             }
-        	
+
             ULONG remaining = width;
             ULONG x = (UWORD)bounds->MinX;
-        	
+
             while (remaining) {
                 unsigned shift = x & 15;
                 unsigned count = 16 - shift;
-            	
+
                 if (count > remaining) {
-	                count = remaining;
+                    count = remaining;
                 }
-            	
+
                 UWORD selected = (0xffffUL >> (16 - count)) << (16 - shift - count);
-            	
+
                 if (input) {
                     selected &= sourceBits((const UWORD*)input, mask_x + width - remaining, count) >> shift;
                 }
-            	
+
                 UWORD* word = (UWORD*)output + (x >> 4);
                 UWORD old = *word;
                 *word = (old & ~selected) | (combine(bits, old, minterm) & selected);
                 x += count;
                 remaining -= count;
             }
-        	
+
             if (y + 1 < height) {
                 output += dest->BytesPerRow;
-            	
+
                 if (input) {
-	                input += mask_stride;
+                    input += mask_stride;
                 }
             }
         }
+    }
+
+    if (chipset) {
+        pcDisownBlitter(graphics);
     }
 }
 
 static ULONG fillRegion(struct Hook* hook asm("a0"), const struct FillMessage* message asm("a1"),
     const struct RastPort* port asm("a2"))
 {
-    (void)hook;
-    drawPattern(port, port->BitMap, NULL, 0, &message->bounds, message->offset_x, message->offset_y, 0, 0);
+    struct GfxBase* graphics = hook->h_Data;
+
+    drawPattern(port, port->BitMap, NULL, 0, &message->bounds, message->offset_x, message->offset_y, 0, 0, graphics);
+
     return 0;
 }
 
@@ -834,18 +927,28 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
     WORD x_min asm("d0"), WORD y_min asm("d1"), WORD x_max asm("d2"), WORD y_max asm("d3"),
     UWORD mask_stride asm("d4"), struct GfxBase* graphics asm("a6"))
 {
-    if (x_max < x_min || y_max < y_min) { return; }
-    struct Rectangle bounds = {x_min, y_min, x_max, y_max};
-    struct Layer* layer = port->Layer;
-    if (!layer) {
-        drawPattern(port, port->BitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0);
+    if (x_max < x_min || y_max < y_min) {
         return;
     }
+
+    struct Rectangle bounds = {x_min, y_min, x_max, y_max};
+    struct Layer* layer = port->Layer;
+
+    if (!layer) {
+        drawPattern(port, port->BitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, graphics);
+
+        return;
+    }
+
     if (!mask && !port->AreaPtrn) {
         struct Library* LayersBase = (APTR)graphics->gb_LayersBase;
+
         struct Hook hook = {0};
         hook.h_Entry = (ULONG (*)())fillRegion;
+        hook.h_Data = graphics;
+
         DoHookClipRects(&hook, port, &bounds);
+
         return;
     }
 
@@ -856,24 +959,41 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
     // modify the layer, its lists or the caller's RastPort while selecting storage.
     struct ExecBase* SysBase = (APTR)graphics->ExecBase;
     ObtainSemaphore(&layer->Lock);
+
     WORD offset_x = layer->bounds.MinX - layer->Scroll_X;
     WORD offset_y = layer->bounds.MinY - layer->Scroll_Y;
     struct Rectangle screen = {(WORD)(x_min + offset_x), (WORD)(y_min + offset_y),
         (WORD)(x_max + offset_x), (WORD)(y_max + offset_y)};
+
     for (const struct ClipRect* clip = layer->ClipRect; clip; clip = clip->Next) {
         struct Rectangle selected = screen;
-        if (selected.MinX < clip->bounds.MinX) { selected.MinX = clip->bounds.MinX; }
-        if (selected.MinY < clip->bounds.MinY) { selected.MinY = clip->bounds.MinY; }
-        if (selected.MaxX > clip->bounds.MaxX) { selected.MaxX = clip->bounds.MaxX; }
-        if (selected.MaxY > clip->bounds.MaxY) { selected.MaxY = clip->bounds.MaxY; }
-        if (selected.MaxX < selected.MinX || selected.MaxY < selected.MinY) { continue; }
+        if (selected.MinX < clip->bounds.MinX) {
+            selected.MinX = clip->bounds.MinX;
+        }
+        if (selected.MinY < clip->bounds.MinY) {
+            selected.MinY = clip->bounds.MinY;
+        }
+        if (selected.MaxX > clip->bounds.MaxX) {
+            selected.MaxX = clip->bounds.MaxX;
+        }
+        if (selected.MaxY > clip->bounds.MaxY) {
+            selected.MaxY = clip->bounds.MaxY;
+        }
+        if (selected.MaxX < selected.MinX || selected.MaxY < selected.MinY) {
+            continue;
+        }
+
         LONG pattern_x = (WORD)(selected.MinX - offset_x);
         LONG pattern_y = (WORD)(selected.MinY - offset_y);
         LONG mask_x = (WORD)(selected.MinX - screen.MinX);
         LONG mask_y = (WORD)(selected.MinY - screen.MinY);
         struct BitMap* dest = port->BitMap;
+
         if (clip->obscured) {
-            if (!clip->BitMap) { continue; }
+            if (!clip->BitMap) {
+                continue;
+            }
+
             dest = clip->BitMap;
             WORD aligned_x = clip->bounds.MinX & ~15;
             selected.MinX -= aligned_x;
@@ -881,11 +1001,14 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
             selected.MinY -= clip->bounds.MinY;
             selected.MaxY -= clip->bounds.MinY;
         }
-        drawPattern(port, dest, (const UWORD*)mask, mask_stride, &selected, pattern_x, pattern_y, mask_x, mask_y);
+
+        drawPattern(port, dest, (const UWORD*)mask, mask_stride, &selected, pattern_x, pattern_y, mask_x, mask_y, graphics);
     }
+
     if (layer->SuperBitMap) {
-        drawPattern(port, layer->SuperBitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0);
+        drawPattern(port, layer->SuperBitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, graphics);
     }
+
     ReleaseSemaphore(&layer->Lock);
 }
 
@@ -1027,38 +1150,82 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
         struct ExecBase* SysBase = (APTR)graphics->ExecBase;
         Alert(0x02080000);
         args->bsa_DestWidth = args->bsa_DestHeight = 0;
+
         return;
     }
+
     if (!args->bsa_SrcWidth || !args->bsa_SrcHeight) {
         args->bsa_DestWidth = args->bsa_DestHeight = 0;
+
         return;
     }
+
     // The low flag bits describe reduction. Equal factors leave them alone;
     // callers should initialize Flags to zero, as specified by the public API.
     if (args->bsa_XSrcFactor != args->bsa_XDestFactor) {
         args->bsa_Flags = (args->bsa_Flags & ~1UL) | (args->bsa_XDestFactor < args->bsa_XSrcFactor);
     }
+
     BOOL equal_y = args->bsa_YSrcFactor == args->bsa_YDestFactor;
     BOOL shrink_y = args->bsa_YDestFactor < args->bsa_YSrcFactor;
-    if (equal_y) { args->bsa_YDDA = 0; }
-    else { args->bsa_Flags = (args->bsa_Flags & ~2UL) | (shrink_y ? 2 : 0); }
+
+    if (equal_y) {
+        args->bsa_YDDA = 0;
+    } else {
+        args->bsa_Flags = (args->bsa_Flags & ~2UL) | (shrink_y ? 2 : 0);
+    }
+
     const struct BitMap* source = args->bsa_SrcBitMap;
     struct BitMap* dest = args->bsa_DestBitMap;
     unsigned depth = source->Depth < dest->Depth ? source->Depth : dest->Depth;
+    BOOL chipset = depth && pcUsesChipset(graphics);
+    BOOL chipset_copy = chipset && args->bsa_XSrcFactor == args->bsa_XDestFactor;
+
     for (unsigned plane = 0; plane < depth; ++plane) {
         struct ScaleAxis axis = scaleAxis(args->bsa_YSrcFactor, args->bsa_YDestFactor);
-        ULONG source_y = 0, dest_y = 0;
+        ULONG source_y = 0;
+        ULONG dest_y = 0;
+        UWORD last_count = 1;
+
         while (source_y < args->bsa_SrcHeight) {
             const UWORD* source_row = (const UWORD*)(source->Planes[plane] +
                 (args->bsa_SrcY + source_y) * source->BytesPerRow);
             UBYTE* dest_row = dest->Planes[plane] + (args->bsa_DestY + dest_y) * dest->BytesPerRow;
+
+            // Equal-width copies observe both preceding DMA and task ownership.
+            // Unequal-width CPU scaling retains caller-managed ordering.
+            if (chipset_copy) {
+                OwnBlitter();
+                WaitBlit();
+            }
+
             scaleRow(args, source_row, (UWORD*)dest_row);
+
+            if (chipset_copy) {
+                DisownBlitter();
+            }
+
             UWORD count = equal_y ? 1 : scaleStep(&axis);
+            last_count = count;
+
             if (!shrink_y) {
+                // Row duplication uses the original's blitter ordering too.
+                // Wait after scaling the first row, before reading it back;
+                // unequal-width scaling itself does not wait for prior DMA.
+                if (chipset && count > 1) {
+                    OwnBlitter();
+                    WaitBlit();
+                }
+
                 for (unsigned row = 1; row < count; ++row) {
                     copyRow((const UWORD*)dest_row, (UWORD*)(dest_row + row * dest->BytesPerRow),
                         args->bsa_DestX, args->bsa_DestX, args->bsa_DestWidth, 0xc0, 0);
                 }
+
+                if (chipset && count > 1) {
+                    DisownBlitter();
+                }
+
                 ++source_y;
                 dest_y += count;
             } else {
@@ -1066,8 +1233,19 @@ void pcBitMapScale(struct BitScaleArgs* args asm("a0"), struct GfxBase* graphics
                 ++dest_y;
             }
         }
+
         args->bsa_DestHeight = dest_y;
-        if (!equal_y) { args->bsa_YDDA = axis.error; }
+
+        if (!equal_y) {
+            args->bsa_YDDA = axis.error;
+
+            if (!shrink_y && last_count > 1) {
+                // The original reports the final row-copy extent in YDDA
+                // when enlargement ends with duplicated rows, not the error.
+                UWORD words = ((args->bsa_DestX & 15) + args->bsa_DestWidth + 15) >> 4;
+                args->bsa_YDDA = words | ((last_count - 1) << 6);
+            }
+        }
     }
 }
 

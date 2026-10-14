@@ -5,6 +5,7 @@
 #include "internal/native.h"
 #include "internal/monitor.h"
 #include "internal/font.h"
+#include "internal/backend.h"
 
 #define __NOLIBBASE__
 #include <proto/exec.h>
@@ -101,6 +102,14 @@ struct GfxBase* Init(ULONG segment asm("a0"), struct ExecBase* SysBase asm("a6")
 	    goto failed;
     }
 
+    // Retain the OS's standard display family. This is logical Amiga display
+    // geometry; the boot framebuffer's physical mode is discovered separately.
+    base->DisplayFlags = SysBase->VBlankFrequency == 50 ? PAL : NTSC;
+
+    if (!pcSelectGraphicsBackend(base)) {
+        goto failed;
+    }
+
     const struct TextFont fonts[2] = {pcTopaz9, pcTopaz8};
     const struct TagItem* const font_tags[2] = {pcTopaz9Tags, NULL};
 
@@ -116,19 +125,13 @@ struct GfxBase* Init(ULONG segment asm("a0"), struct ExecBase* SysBase asm("a6")
         goto failed;
     }
 
-    // Retain the OS's standard display family. This is logical Amiga display
-    // geometry; the boot framebuffer's physical mode is discovered separately.
-    base->DisplayFlags = SysBase->VBlankFrequency == 50 ? PAL : NTSC;
-
     if (!pcInitDefaultMonitor(base)) {
         goto failed;
     }
 
-    // Queue-server setup is still absent.
-    // Completing the vector table alone must not publish an unusable library.
-    // Their owners must initialize these before AddLibrary becomes reachable.
-    if (!base->DefaultFont || !base->default_monitor || !base->DisplayInfoDataBase ||
-        !base->bltsrv.is_Code) {
+    // The framebuffer backend does not submit chipset blits and needs no
+    // blitter server. Its public QBlit/QBSBlit entries decline those requests.
+    if (!base->DefaultFont || !base->default_monitor || !base->DisplayInfoDataBase) {
 	    goto failed;
     }
 

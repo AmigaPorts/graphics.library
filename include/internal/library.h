@@ -17,6 +17,8 @@ struct GraphicsLibrary {
     struct ActiveViewFields active;
     struct NativeDisplayDatabase display;
     struct NativeGraphicsDisplay* native;
+    struct ChipsetGraphicsDisplay* chipset;
+    BOOL chipset_selected;
     struct MonitorSpec* initial_monitor;
     UBYTE initial_frequency;
     struct TextFont* initial_fonts[2];

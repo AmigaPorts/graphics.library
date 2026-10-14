@@ -31,20 +31,23 @@ WORD pcGelBorderHits(const struct VSprite* sprite, const struct GelsInfo* info);
 // Internal GEL bitmap transfers. Coordinates have already been clipped by the
 // drawing/restoration traversal; these are not new public library vectors.
 void pcGelSaveBitmap(const struct VSprite* sprite, const struct BitMap* bitmap,
-    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height, UBYTE mask);
+    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height, UBYTE mask,
+    struct GfxBase* graphics);
 void pcGelDrawBitmap(const struct VSprite* sprite, struct BitMap* bitmap,
     WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height, UBYTE mask);
 
 // Internal DrawGList transfer over the caller-locked layer and its backing
 // bitmaps. The rectangle is already clipped to the RastPort bitmap dimensions.
 void pcGelTransferRastPort(const struct VSprite* sprite, struct RastPort* port, BOOL save,
-    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height);
+    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height,
+    struct ViewPort* viewport, struct GfxBase* graphics);
 
 // Internal Bob traversal and frame completion. The caller owns the layer lock
 // and dispatches VSPRITE nodes separately; these do not replace DrawGList's API.
 void pcGelProcessBob(struct VSprite* sprite, struct RastPort* port, struct VSprite** last,
-    struct GfxBase* graphics);
-void pcGelFinishFrame(struct RastPort* port, struct VSprite* last, struct GfxBase* graphics);
+    struct ViewPort* viewport, struct GfxBase* graphics);
+void pcGelFinishFrame(struct RastPort* port, struct VSprite* last,
+    struct ViewPort* viewport, struct GfxBase* graphics);
 
 // Internal VSprite slot assignment after clipping. Retains the caller-visible
 // nextLine/lastColor state; does not access hardware or emit display lists.

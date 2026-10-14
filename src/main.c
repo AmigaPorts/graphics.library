@@ -12,7 +12,7 @@ LONG __attribute__((used, section(".text.entry"))) doNotExecute(void)
 const char deviceName[] = LIBRARY_NAME;
 const char deviceIdString[] = VERSION_STRING;
 
-const struct Resident RomTag __attribute__((used, aligned(2))) = {
+const struct Resident RomTag __attribute__((used, aligned(2), section(".rodata.romtag"))) = {
     RTC_MATCHWORD,
     (struct Resident*)&RomTag,
     (APTR)&rom_end,

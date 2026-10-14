@@ -26,8 +26,10 @@ void pcBltTemplate(CONST PLANEPTR source asm("a0"), WORD source_x asm("d0"), WOR
 ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"),
     UWORD source_y asm("d1"), struct BitMap* dest asm("a1"), UWORD dest_x asm("d2"),
     UWORD dest_y asm("d3"), UWORD width asm("d4"), UWORD height asm("d5"),
-    UBYTE minterm asm("d6"), UBYTE planes asm("d7"), UWORD* temporary asm("a2"));
-void pcBltClear(APTR memory asm("a1"), ULONG byte_count asm("d0"), ULONG flags asm("d1"));
+    UBYTE minterm asm("d6"), UBYTE planes asm("d7"), UWORD* temporary asm("a2"),
+    struct GfxBase* graphics asm("a6"));
+void pcBltClear(APTR memory asm("a1"), ULONG byte_count asm("d0"), ULONG flags asm("d1"),
+    struct GfxBase* graphics asm("a6"));
 
 void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0"),
     WORD x_min asm("d0"), WORD y_min asm("d1"), WORD x_max asm("d2"), WORD y_max asm("d3"),

@@ -1,3 +1,8 @@
+.idea/
 cmake-*/
 build*/
 install/
+._*
+/LOCAL_AGENT_README.md
+/startup.md
+external/

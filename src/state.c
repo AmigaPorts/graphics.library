@@ -7,12 +7,42 @@
 #include <exec/execbase.h>
 #include <exec/memory.h>
 #include <graphics/copper.h>
+#include <graphics/display.h>
 #define __NOLIBBASE__
 #include <proto/exec.h>
 
 // Public memory-type encodings select shifts, not a detected chipset. Keep
 // these available before displayable bitmap allocation or database creation.
 static const UBYTE bandwidth_shifts[] = {0, 1, 1, 2};
+
+// Each resolution has four memory-bandwidth entries, indexed by
+// (resolution << arraywidth) + bandwidth. A fetch takes at least eight
+// clocks; wider memory words increase that unit at the lower resolutions.
+static const UWORD start_fetch_masks[] = {
+    -8, -16, -16, -32,
+    -8, -8, -8, -16,
+    -8, -8, -8, -8
+};
+
+static const UWORD stop_fetch_masks[] = {
+    -8, -16, -16, -32,
+    -8, -8, -8, -16,
+    -8, -8, -8, -8
+};
+
+// The final word occupies 8 * 2^(bandwidth shift - resolution) clocks.
+// Its stop phase is limited to the eight-clock bitplane scheduling period.
+static const UWORD fetch_overrun[] = {
+    -8, -16, -16, -32,
+    -4, -8, -8, -16,
+    -2, -4, -4, -8
+};
+
+static const WORD real_stops[] = {
+    8, 8, 8, 8,
+    4, 8, 8, 8,
+    2, 4, 4, 8
+};
 
 static void initList(struct List* list)
 {
@@ -202,7 +232,12 @@ BOOL pcInitGraphicsState(struct GfxBase* base)
     base->BlitLock = -1;
     base->BlitNest = -1;
     base->bwshifts = (UBYTE*)bandwidth_shifts;
+    base->StrtFetchMasks = (UWORD*)start_fetch_masks;
+    base->StopFetchMasks = (UWORD*)stop_fetch_masks;
+    base->Overrun = (UWORD*)fetch_overrun;
+    base->RealStops = (WORD*)real_stops;
     base->NormalDisplayColumns = 640;
+    base->system_bplcon0 = COLORON;
 
     // Baseline software defaults precede any display-backend selection. Sprite
     // widths count 16-bit words; FreeSprite restores DefaultSpriteWidth.

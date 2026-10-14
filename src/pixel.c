@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 // Planar pixel access using the public Layer and ClipRect storage descriptions.
 #include "internal/pixel.h"
+#include "internal/backend.h"
+#include "internal/blitter.h"
+#include "internal/native.h"
 
 #include <graphics/clip.h>
 #include <graphics/gfxbase.h>
@@ -186,18 +189,36 @@ ULONG pcReadPixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
     struct GfxBase* graphics asm("a6"))
 {
     struct Layer* layer = port->Layer;
-    if (layer) { LockLayerRom(layer); }
+
+    if (layer) {
+        LockLayerRom(layer);
+    }
+
     const struct BitMap* map = pixelStorage(port, &x, &y);
     LONG result = -1;
+
     if (map) {
+        // Reading waits for pending DMA without taking ownership. In
+        // particular it remains valid while the calling task owns the blitter.
+        if (pcUsesChipset(graphics)) {
+            pcWaitBlit(graphics);
+        }
+
         LONG offset = (LONG)y * (WORD)map->BytesPerRow + (x >> 3);
         UBYTE bit = 0x80U >> (x & 7);
         result = 0;
+
         for (unsigned plane = 0; plane < map->Depth; ++plane) {
-            if (map->Planes[plane][offset] & bit) { result |= 1UL << plane; }
+            if (map->Planes[plane][offset] & bit) {
+                result |= 1UL << plane;
+            }
         }
     }
-    if (layer) { UnlockLayerRom(layer); }
+
+    if (layer) {
+        UnlockLayerRom(layer);
+    }
+
     return result;
 }
 
@@ -205,15 +226,34 @@ LONG pcWritePixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
     struct GfxBase* graphics asm("a6"))
 {
     struct Layer* layer = port->Layer;
-    if (layer) { LockLayerRom(layer); }
+
+    if (layer) {
+        LockLayerRom(layer);
+    }
+
     struct BitMap* map = pixelStorage(port, &x, &y);
     LONG result = -1;
+
     if (map) {
+        // The original owns even when the plane mask selects nothing.
+        // Select layer storage first, so an inaccessible pixel never waits.
+        BOOL chipset = pcUsesChipset(graphics);
+
+        if (chipset) {
+            pcOwnBlitter(graphics);
+            pcWaitBlit(graphics);
+        }
+
         LONG offset = (LONG)y * (WORD)map->BytesPerRow + (x >> 3);
         UBYTE bit = 0x80U >> (x & 7);
+
         for (unsigned plane = 0; plane < map->Depth; ++plane) {
-            if (!(port->Mask & (1U << plane))) { continue; }
+            if (!(port->Mask & (1U << plane))) {
+                continue;
+            }
+
             UBYTE* dest = map->Planes[plane] + offset;
+
             switch (port->minterms[plane] >> 6) {
                 case 0: *dest &= ~bit; break;
                 case 1: *dest ^= bit; break;
@@ -221,8 +261,17 @@ LONG pcWritePixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
                 case 3: *dest |= bit; break;
             }
         }
+
+        if (chipset) {
+            pcDisownBlitter(graphics);
+        }
+
         result = 0;
     }
-    if (layer) { UnlockLayerRom(layer); }
+
+    if (layer) {
+        UnlockLayerRom(layer);
+    }
+
     return result;
 }

@@ -4,6 +4,10 @@
 #include "internal/gels.h"
 #include "internal/copper.h"
 #include "internal/monitor.h"
+#include "internal/backend.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset_gels.h"
+#endif
 
 #include <exec/execbase.h>
 #include <graphics/clip.h>
@@ -146,11 +150,11 @@ void pcDrawGList(struct RastPort* port asm("a1"), struct ViewPort* viewport asm(
         if (sprite->Flags & VSPRITE) {
             drawSprite(sprite, port, viewport, &current_sprite, &current_color, graphics);
         } else {
-            pcGelProcessBob(sprite, port, &last, graphics);
+            pcGelProcessBob(sprite, port, &last, viewport, graphics);
         }
     }
 
-    pcGelFinishFrame(port, last, graphics);
+    pcGelFinishFrame(port, last, viewport, graphics);
     current_sprite->CopPtr->OpCode = COPPER_WAIT;
     current_sprite->CopPtr->VWAITPOS = 10000;
     current_sprite->CopPtr->HWAITPOS = 255;
@@ -160,9 +164,13 @@ void pcDrawGList(struct RastPort* port asm("a1"), struct ViewPort* viewport asm(
     viewport->SprIns = sprites;
     viewport->ClrIns = colors;
 
-    // CPU Bob transfers have already finished. There are no deferred BlissObj
-    // hardware submissions to enqueue at the end of this native traversal.
 done:
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcFinishGelQueue(info, graphics);
+    }
+#endif
+
     if (layer) {
         ReleaseSemaphore(&layer->Lock);
     }

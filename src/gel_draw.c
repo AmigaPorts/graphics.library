@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-// Independent CPU drawing and background restoration for public graphics elements.
+// Shared drawing traversal and framebuffer transfers for public graphics elements.
 #include "internal/gels.h"
 #include "internal/bitmap.h"
+#include "internal/backend.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset_gels.h"
+#endif
 
 #include <graphics/clip.h>
 #include <graphics/gfxbase.h>
@@ -10,13 +14,15 @@
 #include <proto/graphics.h>
 
 static void restoreBitmap(const struct VSprite* sprite, const WORD* buffer, struct BitMap* bitmap,
-    WORD source_x, WORD source_y, WORD dest_x, WORD dest_y, WORD width, WORD height, UBYTE mask)
+    WORD source_x, WORD source_y, WORD dest_x, WORD dest_y, WORD width, WORD height, UBYTE mask,
+    struct GelsInfo* info, WORD beam, struct GfxBase* graphics)
 {
     struct BitMap source = {0};
     source.BytesPerRow = (UWORD)sprite->Width * 2;
     source.Rows = sprite->Height;
     source.Depth = bitmap->Depth;
     ULONG plane_size = (ULONG)(UWORD)sprite->Width * (UWORD)sprite->Height;
+
     // Restoration consumes consecutive saved planes for the selected output
     // planes. PlanePick/PlaneOnOff describe drawing, not background restoration.
     for (unsigned plane = 0; plane < source.Depth; ++plane) {
@@ -25,36 +31,60 @@ static void restoreBitmap(const struct VSprite* sprite, const WORD* buffer, stru
             buffer += plane_size;
         }
     }
-    // GEL blits are internal operations in the original library as well.
-    pcBltBitMap(&source, source_x, source_y, bitmap, dest_x, dest_y, width, height, 0xc0, mask, NULL);
+
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcQueueGelCopy(info, &source, bitmap, source_x, source_y, dest_x, dest_y,
+            width, height, mask, beam, graphics);
+        return;
+    }
+#else
+    (void)info;
+    (void)beam;
+#endif
+
+    // Framebuffer transfers complete in the calling task.
+    pcBltBitMap(&source, source_x, source_y, bitmap, dest_x, dest_y, width, height, 0xc0, mask, NULL, graphics);
 }
 
 static void restoreClips(const struct VSprite* sprite, const WORD* buffer, const struct RastPort* port,
     struct ClipRect* clips, struct BitMap* bitmap, BOOL super_bitmap,
-    WORD source_x, WORD source_y, WORD dest_x, WORD dest_y, WORD width, WORD height)
+    WORD source_x, WORD source_y, WORD dest_x, WORD dest_y, WORD width, WORD height,
+    WORD beam, struct GfxBase* graphics)
 {
     WORD right = dest_x + width - 1, bottom = dest_y + height - 1;
+
     for (const struct ClipRect* clip = clips; clip; clip = clip->Next) {
         WORD left = dest_x > clip->bounds.MinX ? dest_x : clip->bounds.MinX;
         WORD top = dest_y > clip->bounds.MinY ? dest_y : clip->bounds.MinY;
         WORD last_x = right < clip->bounds.MaxX ? right : clip->bounds.MaxX;
         WORD last_y = bottom < clip->bounds.MaxY ? bottom : clip->bounds.MaxY;
-        if (left > last_x || top > last_y) { continue; }
+        if (left > last_x || top > last_y) {
+            continue;
+        }
+
         WORD x = left, y = top;
         struct BitMap* target = bitmap;
         if (!super_bitmap && clip->obscured) {
             target = clip->BitMap;
-            if (!target) { continue; }
+            if (!target) {
+                continue;
+            }
             x -= clip->bounds.MinX & ~15;
             y -= clip->bounds.MinY;
         }
-        if (!target) { continue; }
+
+        if (!target) {
+            continue;
+        }
+
         restoreBitmap(sprite, buffer, target, source_x + left - dest_x, source_y + top - dest_y,
-            x, y, last_x - left + 1, last_y - top + 1, port->Mask);
+            x, y, last_x - left + 1, last_y - top + 1, port->Mask, port->GelsInfo, beam, graphics);
     }
 }
 
-static void restoreBackground(struct VSprite* sprite, struct RastPort* port, struct GfxBase* graphics)
+static void restoreBackground(struct VSprite* sprite, struct RastPort* port,
+    struct ViewPort* viewport, struct GfxBase* graphics)
 {
     WORD bitmap_width = GetBitMapAttr(port->BitMap, BMA_WIDTH);
     struct Bob* bob = sprite->VSBob;
@@ -62,54 +92,91 @@ static void restoreBackground(struct VSprite* sprite, struct RastPort* port, str
     WORD x = sprite->OldX, y = sprite->OldY;
     WORD height = sprite->Height, width = (UWORD)sprite->Width * 16;
     WORD right = x + width - 1, bottom = y + height - 1;
+
     for (struct VSprite* next = sprite->ClearPath; next != tail; next = next->ClearPath) {
         if (!(next->Flags & BACKSAVED) || x > next->OldX + (LONG)next->Width * 16 - 1 ||
-            next->OldX > right || y > next->OldY + (LONG)next->Height - 1 || next->OldY > bottom) { continue; }
-        restoreBackground(next, port, graphics);
+            next->OldX > right || y > next->OldY + (LONG)next->Height - 1 || next->OldY > bottom) {
+            continue;
+        }
+        restoreBackground(next, port, viewport, graphics);
     }
-    if (!(sprite->Flags & BACKSAVED)) { return; }
+
+    if (!(sprite->Flags & BACKSAVED)) {
+        return;
+    }
+
     sprite->Flags &= ~BACKSAVED;
-    if (bob->Flags & SAVEBOB) { return; }
+    if (bob->Flags & SAVEBOB) {
+        return;
+    }
+
     WORD source_x = x < 0 ? (UWORD)-x : 0;
     WORD source_y = y < 0 ? (UWORD)-y : 0;
     WORD dest_x = x < 0 ? 0 : x, dest_y = y < 0 ? 0 : y;
     width = (UWORD)width - source_x;
     height = (UWORD)height - source_y;
-    if ((LONG)dest_x + width > bitmap_width) { width = bitmap_width - dest_x; }
-    if ((LONG)dest_y + height > port->BitMap->Rows) { height = port->BitMap->Rows - dest_y; }
-    if (width <= 0 || height <= 0) { return; }
+    if ((LONG)dest_x + width > bitmap_width) {
+        width = bitmap_width - dest_x;
+    }
+
+    if ((LONG)dest_y + height > port->BitMap->Rows) {
+        height = port->BitMap->Rows - dest_y;
+    }
+
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    WORD beam = 0;
+
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        beam = pcGelBeamLine(sprite, port, viewport, TRUE, graphics);
+    }
+#else
+    (void)viewport;
+#endif
+
     struct Layer* layer = port->Layer;
     if (!layer) {
         restoreBitmap(sprite, bob->SaveBuffer, port->BitMap, source_x, source_y, dest_x, dest_y,
-            width, height, port->Mask);
+            width, height, port->Mask, port->GelsInfo, beam, graphics);
         return;
     }
+
     port->GelsInfo->Flags = port->Flags & 4;
     restoreClips(sprite, bob->SaveBuffer, port, layer->ClipRect, port->BitMap, FALSE,
         source_x, source_y, dest_x + layer->bounds.MinX - layer->Scroll_X,
-        dest_y + layer->bounds.MinY - layer->Scroll_Y, width, height);
+        dest_y + layer->bounds.MinY - layer->Scroll_Y, width, height, beam, graphics);
     if (layer->SuperBitMap) {
         restoreClips(sprite, bob->SaveBuffer, port, layer->SuperClipRect, layer->SuperBitMap, TRUE,
-            source_x, source_y, dest_x, dest_y, width, height);
+            source_x, source_y, dest_x, dest_y, width, height, beam, graphics);
     }
 }
 
 void pcRemIBob(struct Bob* bob asm("a0"), struct RastPort* port asm("a1"), struct ViewPort* viewport asm("a2"),
     struct GfxBase* graphics asm("a6"))
 {
-    // CPU transfers finish synchronously; there is no chipset blitter queue or
-    // beam-position dependency. The viewport is needed only by that scheduling.
-    (void)viewport;
     port->GelsInfo->firstBlissObj = NULL;
     port->GelsInfo->lastBlissObj = NULL;
     struct VSprite* sprite = bob->BobVSprite;
-    if (sprite->Flags & BACKSAVED) { restoreBackground(sprite, port, graphics); }
+    if (sprite->Flags & BACKSAVED) {
+        restoreBackground(sprite, port, viewport, graphics);
+    }
+
     pcRemVSprite(sprite);
     bob->Flags |= BOBNIX;
+
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcFinishGelQueue(port->GelsInfo, graphics);
+    }
+#endif
 }
 
-void pcGelSaveBitmap(const struct VSprite* sprite, const struct BitMap* bitmap,
-    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height, UBYTE mask)
+static void saveBitmap(const struct VSprite* sprite, const struct BitMap* bitmap,
+    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height, UBYTE mask,
+    struct GelsInfo* info, WORD beam, struct GfxBase* graphics)
 {
     struct BitMap source = *bitmap, saved = {0};
     saved.BytesPerRow = (UWORD)sprite->Width * 2;
@@ -117,6 +184,7 @@ void pcGelSaveBitmap(const struct VSprite* sprite, const struct BitMap* bitmap,
     saved.Depth = bitmap->Depth;
     ULONG plane_bytes = (ULONG)(UWORD)sprite->Width * (UWORD)sprite->Height * 2;
     unsigned selected = 0;
+
     for (unsigned plane = 0; plane < bitmap->Depth; ++plane) {
         if (mask & (1U << plane)) {
             // The original save transfer advances its screen-source index only
@@ -125,7 +193,27 @@ void pcGelSaveBitmap(const struct VSprite* sprite, const struct BitMap* bitmap,
             saved.Planes[plane] = (PLANEPTR)sprite->VSBob->SaveBuffer + plane * plane_bytes;
         }
     }
-    pcBltBitMap(&source, bitmap_x, bitmap_y, &saved, image_x, image_y, width, height, 0xc0, mask, NULL);
+
+#if GRAPHICS_CHIPSET
+    if (info && pcUsesChipset(graphics)) {
+        pcQueueGelCopy(info, &source, &saved, bitmap_x, bitmap_y, image_x, image_y,
+            width, height, mask, beam, graphics);
+        return;
+    }
+#else
+    (void)info;
+    (void)beam;
+#endif
+
+    pcBltBitMap(&source, bitmap_x, bitmap_y, &saved, image_x, image_y, width, height, 0xc0, mask, NULL, graphics);
+}
+
+void pcGelSaveBitmap(const struct VSprite* sprite, const struct BitMap* bitmap,
+    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height, UBYTE mask,
+    struct GfxBase* graphics)
+{
+    saveBitmap(sprite, bitmap, image_x, image_y, bitmap_x, bitmap_y, width, height,
+        mask, NULL, 0, graphics);
 }
 
 static UWORD imageBits(const UWORD* row, unsigned x, unsigned count)
@@ -133,7 +221,9 @@ static UWORD imageBits(const UWORD* row, unsigned x, unsigned count)
     unsigned shift = x & 15;
     row += x >> 4;
     UWORD bits = *row << shift;
-    if (shift + count > 16) { bits |= row[1] >> (16 - shift); }
+    if (shift + count > 16) {
+        bits |= row[1] >> (16 - shift);
+    }
     return bits;
 }
 
@@ -143,7 +233,9 @@ void pcGelDrawBitmap(const struct VSprite* sprite, struct BitMap* bitmap,
     ULONG plane_words = (ULONG)(UWORD)sprite->Width * (UWORD)sprite->Height;
     const UWORD* image = (const UWORD*)sprite->ImageData;
     for (unsigned plane = 0; plane < bitmap->Depth; ++plane) {
-        if (!(mask & (1U << plane))) { continue; }
+        if (!(mask & (1U << plane))) {
+            continue;
+        }
         BOOL picked = (UBYTE)sprite->PlanePick & (1U << plane);
         BOOL overlay = !picked || (sprite->Flags & OVERLAY);
         unsigned shadow_x = (UWORD)image_x;
@@ -154,35 +246,72 @@ void pcGelDrawBitmap(const struct VSprite* sprite, struct BitMap* bitmap,
             shadow_x += (bitmap_x & 15) - (image_x & 15);
         }
         const UWORD* pixels = image;
-        if (picked) { image += plane_words; }
+        if (picked) {
+            image += plane_words;
+        }
         const UWORD* shadow = (const UWORD*)sprite->VSBob->ImageShadow;
-        if (picked) { pixels += (ULONG)(UWORD)image_y * (UWORD)sprite->Width; }
-        if (overlay) { shadow += (ULONG)(UWORD)image_y * (UWORD)sprite->Width; }
+        if (picked) {
+            pixels += (ULONG)(UWORD)image_y * (UWORD)sprite->Width;
+        }
+        if (overlay) {
+            shadow += (ULONG)(UWORD)image_y * (UWORD)sprite->Width;
+        }
         UBYTE* dest = bitmap->Planes[plane] + (ULONG)(UWORD)bitmap_y * bitmap->BytesPerRow;
         for (WORD y = 0; y < height; ++y) {
             unsigned remaining = (UWORD)width, offset = 0;
             while (remaining) {
                 unsigned shift = ((UWORD)bitmap_x + offset) & 15;
                 unsigned count = 16 - shift;
-                if (count > remaining) { count = remaining; }
+                if (count > remaining) {
+                    count = remaining;
+                }
                 UWORD active = (0xffffUL >> (16 - count)) << (16 - shift - count);
-                if (overlay) { active &= imageBits(shadow, shadow_x + offset, count) >> shift; }
+                if (overlay) {
+                    active &= imageBits(shadow, shadow_x + offset, count) >> shift;
+                }
                 UWORD bits = picked ? imageBits(pixels, (UWORD)image_x + offset, count) >> shift :
                     ((UBYTE)sprite->PlaneOnOff & (1U << plane) ? 0xffff : 0);
                 UWORD* word = (UWORD*)dest + (((UWORD)bitmap_x + offset) >> 4);
                 *word = (*word & ~active) | (bits & active);
-                offset += count; remaining -= count;
+                offset += count;
+                remaining -= count;
             }
-            if (picked) { pixels += sprite->Width; }
-            if (overlay) { shadow += sprite->Width; }
+            if (picked) {
+                pixels += sprite->Width;
+            }
+            if (overlay) {
+                shadow += sprite->Width;
+            }
             dest += bitmap->BytesPerRow;
         }
     }
 }
 
+static void transferBitmap(const struct VSprite* sprite, const struct RastPort* port,
+    struct BitMap* bitmap, BOOL save, WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y,
+    WORD width, WORD height, WORD beam, struct GfxBase* graphics)
+{
+    if (save) {
+        saveBitmap(sprite, bitmap, image_x, image_y, bitmap_x, bitmap_y, width, height,
+            port->Mask, port->GelsInfo, beam, graphics);
+        return;
+    }
+
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcQueueGelDraw(port->GelsInfo, sprite, bitmap, image_x, image_y, bitmap_x, bitmap_y,
+            width, height, port->Mask, beam, graphics);
+        return;
+    }
+#endif
+
+    pcGelDrawBitmap(sprite, bitmap, image_x, image_y, bitmap_x, bitmap_y, width, height, port->Mask);
+}
+
 static void transferClips(const struct VSprite* sprite, const struct RastPort* port,
     const struct ClipRect* clips, struct BitMap* bitmap, BOOL super_bitmap, BOOL save,
-    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height)
+    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height,
+    WORD beam, struct GfxBase* graphics)
 {
     WORD right = bitmap_x + width - 1, bottom = bitmap_y + height - 1;
     for (const struct ClipRect* clip = clips; clip; clip = clip->Next) {
@@ -190,7 +319,10 @@ static void transferClips(const struct VSprite* sprite, const struct RastPort* p
         WORD top = bitmap_y > clip->bounds.MinY ? bitmap_y : clip->bounds.MinY;
         WORD last_x = right < clip->bounds.MaxX ? right : clip->bounds.MaxX;
         WORD last_y = bottom < clip->bounds.MaxY ? bottom : clip->bounds.MaxY;
-        if (left > last_x || top > last_y) { continue; }
+        if (left > last_x || top > last_y) {
+            continue;
+        }
+
         WORD x = left, y = top;
         struct BitMap* target = bitmap;
         if (!super_bitmap && clip->obscured) {
@@ -198,128 +330,181 @@ static void transferClips(const struct VSprite* sprite, const struct RastPort* p
             x -= clip->bounds.MinX & ~15;
             y -= clip->bounds.MinY;
         }
-        if (!target) { continue; }
-        WORD sx = image_x + left - bitmap_x, sy = image_y + top - bitmap_y;
-        if (save) {
-            pcGelSaveBitmap(sprite, target, sx, sy, x, y, last_x - left + 1, last_y - top + 1, port->Mask);
-        } else {
-            pcGelDrawBitmap(sprite, target, sx, sy, x, y, last_x - left + 1, last_y - top + 1, port->Mask);
+
+        if (!target) {
+            continue;
         }
+
+        WORD sx = image_x + left - bitmap_x, sy = image_y + top - bitmap_y;
+        transferBitmap(sprite, port, target, save, sx, sy, x, y,
+            last_x - left + 1, last_y - top + 1, beam, graphics);
     }
 }
 
 void pcGelTransferRastPort(const struct VSprite* sprite, struct RastPort* port, BOOL save,
-    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height)
+    WORD image_x, WORD image_y, WORD bitmap_x, WORD bitmap_y, WORD width, WORD height,
+    struct ViewPort* viewport, struct GfxBase* graphics)
 {
+    WORD beam = 0;
+
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        beam = pcGelBeamLine(sprite, port, viewport, FALSE, graphics);
+    }
+#else
+    (void)viewport;
+#endif
+
     struct Layer* layer = port->Layer;
     if (!layer) {
-        if (save) {
-            pcGelSaveBitmap(sprite, port->BitMap, image_x, image_y, bitmap_x, bitmap_y, width, height, port->Mask);
-        } else {
-            pcGelDrawBitmap(sprite, port->BitMap, image_x, image_y, bitmap_x, bitmap_y, width, height, port->Mask);
-        }
+        transferBitmap(sprite, port, port->BitMap, save, image_x, image_y, bitmap_x, bitmap_y,
+            width, height, beam, graphics);
         return;
     }
+
     // The caller holds the layer lock for the complete DrawGList traversal.
     // Unsaved obscured rectangles have no backing pixels to transfer.
     port->GelsInfo->Flags = port->Flags & 4;
     transferClips(sprite, port, layer->ClipRect, port->BitMap, FALSE, save,
         image_x, image_y, bitmap_x + layer->bounds.MinX - layer->Scroll_X,
-        bitmap_y + layer->bounds.MinY - layer->Scroll_Y, width, height);
+        bitmap_y + layer->bounds.MinY - layer->Scroll_Y, width, height, beam, graphics);
     if (layer->SuperBitMap) {
         transferClips(sprite, port, layer->SuperClipRect, layer->SuperBitMap, TRUE, save,
-            image_x, image_y, bitmap_x, bitmap_y, width, height);
+            image_x, image_y, bitmap_x, bitmap_y, width, height, beam, graphics);
     }
 }
 
 static void drawBob(struct VSprite* sprite, struct RastPort* port, struct VSprite** last,
-    struct GfxBase* graphics)
+    struct ViewPort* viewport, struct GfxBase* graphics)
 {
     WORD bitmap_height = port->BitMap->Rows;
     WORD bitmap_width = GetBitMapAttr(port->BitMap, BMA_WIDTH);
     struct Bob* bob = sprite->VSBob;
+
     if (bob->After && !(bob->After->Flags & BDRAWN)) {
         bob->Flags |= BWAITING;
         return;
     }
+
     WORD x = sprite->X, y = sprite->Y;
     WORD full_width = (UWORD)sprite->Width * 16, full_height = sprite->Height;
     WORD dest_x = x < 0 ? 0 : x, dest_y = y < 0 ? 0 : y;
     WORD source_x = dest_x - x, source_y = dest_y - y;
     WORD width = (UWORD)full_width - source_x, height = (UWORD)full_height - source_y;
-    if ((LONG)dest_x + width > bitmap_width) { width = bitmap_width - dest_x; }
-    if ((LONG)dest_y + height > bitmap_height) { height = bitmap_height - dest_y; }
+    if ((LONG)dest_x + width > bitmap_width) {
+        width = bitmap_width - dest_x;
+    }
+
+    if ((LONG)dest_y + height > bitmap_height) {
+        height = bitmap_height - dest_y;
+    }
     BOOL visible = width > 0 && height > 0;
-    if (visible) { sprite->Flags &= ~GELGONE; }
-    else { sprite->Flags |= GELGONE; }
+    if (visible) {
+        sprite->Flags &= ~GELGONE;
+    } else {
+        sprite->Flags |= GELGONE;
+    }
+
     if (sprite->Flags & SAVEBACK) {
-        if (sprite->Flags & BACKSAVED) { restoreBackground(sprite, port, graphics); }
+        if (sprite->Flags & BACKSAVED) {
+            restoreBackground(sprite, port, viewport, graphics);
+        }
+
         WORD right = x + full_width - 1, bottom = y + full_height - 1;
         struct VSprite* tail = port->GelsInfo->gelTail;
         for (struct VSprite* next = port->GelsInfo->gelHead->NextVSprite; next != tail; next = next->NextVSprite) {
             if (!(next->Flags & BACKSAVED) || x > next->OldX + (LONG)next->Width * 16 - 1 ||
-                next->OldX > right || y > next->OldY + (LONG)next->Height - 1 || next->OldY > bottom) { continue; }
-            restoreBackground(next, port, graphics);
+                next->OldX > right || y > next->OldY + (LONG)next->Height - 1 || next->OldY > bottom) {
+                continue;
+            }
+            restoreBackground(next, port, viewport, graphics);
         }
         if (visible) {
-            pcGelTransferRastPort(sprite, port, TRUE, source_x, source_y, dest_x, dest_y, width, height);
+            pcGelTransferRastPort(sprite, port, TRUE, source_x, source_y, dest_x, dest_y, width, height,
+                viewport, graphics);
             // Backgrounds saved this pass must not be restored again until the
             // following pass. BACKSAVED is exchanged at frame completion.
             sprite->Flags |= BOBUPDATE;
         }
     }
+
     if (visible) {
         (*last)->DrawPath = sprite;
         *last = sprite;
-        pcGelTransferRastPort(sprite, port, FALSE, source_x, source_y, dest_x, dest_y, width, height);
+        pcGelTransferRastPort(sprite, port, FALSE, source_x, source_y, dest_x, dest_y, width, height,
+            viewport, graphics);
     }
+
     bob->Flags = (bob->Flags & ~BWAITING) | BDRAWN;
     if (bob->Before && (bob->Before->Flags & BWAITING)) {
-        drawBob(bob->Before->BobVSprite, port, last, graphics);
+        drawBob(bob->Before->BobVSprite, port, last, viewport, graphics);
     }
 }
 
 void pcGelProcessBob(struct VSprite* sprite, struct RastPort* port, struct VSprite** last,
-    struct GfxBase* graphics)
+    struct ViewPort* viewport, struct GfxBase* graphics)
 {
     struct Bob* bob = sprite->VSBob;
     bob->Flags &= ~(BWAITING | BDRAWN);
     if (bob->Flags & BOBSAWAY) {
         if (!bob->DBuffer || (bob->Flags & OUTSTEP)) {
-            if (sprite->Flags & BACKSAVED) { restoreBackground(sprite, port, graphics); }
+            if (sprite->Flags & BACKSAVED) {
+                restoreBackground(sprite, port, viewport, graphics);
+            }
             pcRemVSprite(sprite);
             bob->Flags |= BOBNIX;
         } else {
-            if (sprite->Flags & BACKSAVED) { restoreBackground(sprite, port, graphics); }
+            if (sprite->Flags & BACKSAVED) {
+                restoreBackground(sprite, port, viewport, graphics);
+            }
             bob->Flags |= OUTSTEP;
         }
     } else {
-        drawBob(sprite, port, last, graphics);
+        drawBob(sprite, port, last, viewport, graphics);
     }
 }
 
-void pcGelFinishFrame(struct RastPort* port, struct VSprite* last, struct GfxBase* graphics)
+void pcGelFinishFrame(struct RastPort* port, struct VSprite* last,
+    struct ViewPort* viewport, struct GfxBase* graphics)
 {
     struct VSprite* tail = port->GelsInfo->gelTail;
     last->DrawPath = tail;
+
     for (struct VSprite* sprite = port->GelsInfo->gelHead->NextVSprite; sprite != tail; sprite = sprite->NextVSprite) {
-        if (sprite->Flags & BACKSAVED) { restoreBackground(sprite, port, graphics); }
-        if (sprite->Flags & BOBUPDATE) { sprite->Flags = (sprite->Flags & ~BOBUPDATE) | BACKSAVED; }
+        if (sprite->Flags & BACKSAVED) {
+            restoreBackground(sprite, port, viewport, graphics);
+        }
+        if (sprite->Flags & BOBUPDATE) {
+            sprite->Flags = (sprite->Flags & ~BOBUPDATE) | BACKSAVED;
+        }
+
         struct Bob* bob = sprite->VSBob;
-        if (!bob) { continue; }
+        if (!bob) {
+            continue;
+        }
         bob->Flags &= ~(BWAITING | BDRAWN);
         struct DBufPacket* packet = bob->DBuffer;
         if (packet) {
-            sprite->OldX = packet->BufX; packet->BufX = sprite->X;
-            sprite->OldY = packet->BufY; packet->BufY = sprite->Y;
-            sprite->ClearPath = packet->BufPath; packet->BufPath = sprite->DrawPath;
+            sprite->OldX = packet->BufX;
+            packet->BufX = sprite->X;
+            sprite->OldY = packet->BufY;
+            packet->BufY = sprite->Y;
+            sprite->ClearPath = packet->BufPath;
+            packet->BufPath = sprite->DrawPath;
             WORD* buffer = bob->SaveBuffer;
-            bob->SaveBuffer = packet->BufBuffer; packet->BufBuffer = buffer;
+            bob->SaveBuffer = packet->BufBuffer;
+            packet->BufBuffer = buffer;
             BOOL saved = sprite->Flags & BACKSAVED;
-            if (bob->Flags & SAVEPRESERVE) { sprite->Flags |= BACKSAVED; }
-            else { sprite->Flags &= ~BACKSAVED; }
-            if (saved) { bob->Flags |= SAVEPRESERVE; }
-            else { bob->Flags &= ~SAVEPRESERVE; }
+            if (bob->Flags & SAVEPRESERVE) {
+                sprite->Flags |= BACKSAVED;
+            } else {
+                sprite->Flags &= ~BACKSAVED;
+            }
+            if (saved) {
+                bob->Flags |= SAVEPRESERVE;
+            } else {
+                bob->Flags &= ~SAVEPRESERVE;
+            }
         } else {
             sprite->OldX = sprite->X;
             sprite->OldY = sprite->Y;

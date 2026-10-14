@@ -1,23 +1,37 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 // Native display ownership. Exec supplies frame delivery and task scheduling;
-// devicetree.resource supplies the existing firmware framebuffer. No PCI mode
-// change, custom-chip access or emulator service is involved.
+// Backend-specific hardware access stays in framebuffer/chipset modules.
+// The framebuffer owner uses devicetree.resource's firmware description.
 #include "internal/native.h"
+#include "internal/backend.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset.h"
+#endif
 #include "internal/library.h"
 #include "internal/node.h"
 #include "internal/monitor.h"
 #include "internal/frame.h"
+#include "internal/blitter.h"
 #include "internal/color.h"
 #include "internal/state.h"
 #include <exec/memory.h>
 #include <hardware/intbits.h>
 #define __NOLIBBASE__
 #include <proto/exec.h>
+#include <proto/timer.h>
 
 #define DISPLAY_STACK_SIZE 16384
 
-void pcWaitBlit(void)
+void pcWaitBlit(struct GfxBase* graphics asm("a6"))
 {
+#if GRAPHICS_CHIPSET
+
+    if (pcUsesChipset(graphics)) {
+        pcWaitChipsetBlit();
+        return;
+    }
+#endif
+    (void)graphics;
     // Native bitmap writes are synchronous: there is no submitted transfer
     // left to poll after a drawing call returns. Keep the compiler boundary
     // for callers that reuse or release those buffers immediately afterward.
@@ -28,12 +42,45 @@ void pcWaitBlit(void)
     __asm__ volatile("" : : : "memory");
 }
 
+// Queued-blit callbacks directly program chipset registers. The framebuffer
+// backend silently declines them without modifying nodes or signaling a
+// completion. The real-chipset backend submits through the shared ownership
+// queue and completes from the hardware blitter interrupt.
+void pcQBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"))
+{
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(base)) {
+        pcQueueBlit(node, base);
+        return;
+    }
+#endif
+    (void)node;
+    (void)base;
+}
+
+void pcQBSBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"))
+{
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(base)) {
+        pcQueueBSBlit(node, base);
+        return;
+    }
+#endif
+    (void)node;
+    (void)base;
+}
+
 ULONG pcSetChipRev(ULONG requested asm("d0"), struct GfxBase* graphics asm("a6"))
 {
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        return pcSetChipsetRevision(requested, graphics);
+    }
+#endif
     // This backend presents a firmware framebuffer, not an Amiga chipset.
     // Renderer/P96 capabilities do not describe Agnus or Denise revisions.
-    // Keep the software selection and database rules shared with a future
-    // chipset backend, which will supply its own discovery results.
+    // The chipset backend supplies its own discovery results above; both
+    // backends share the software selection and database rules.
     struct GraphicsChipRevision revision = pcApplyChipRevision(requested, 0, 0, graphics);
 
     if (revision.changed) {
@@ -43,6 +90,7 @@ ULONG pcSetChipRev(ULONG requested asm("d0"), struct GfxBase* graphics asm("a6")
     return revision.reported;
 }
 
+#if GRAPHICS_FRAMEBUFFER
 static BOOL presentBlank(struct NativeGraphicsDisplay* native, ULONG color)
 {
     if (native->blank && native->blank_color == color) {
@@ -132,6 +180,8 @@ static void displayPlacement(struct GraphicsFramebufferScaleArea* area,
     // Interlaced output is addressed in rows of the selected physical field.
     area->dest_y = ((LONG)rows - (LONG)height) / 2;
 }
+
+#endif
 
 static BOOL nextDisplayField(const struct ActiveViewFields* active, struct ViewDisplaySnapshot* current,
     ULONG identity, struct ViewDisplaySnapshot** display, unsigned* source)
@@ -467,6 +517,14 @@ void pcChangeVPBitMap(struct ViewPort* viewport asm("a0"), struct BitMap* bitmap
     struct ExecBase* SysBase = (APTR)graphics->ExecBase;
     ObtainSemaphore(graphics->ActiViewCprSemaphore);
 
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcChangeChipsetVPBitMap(viewport, bitmap, info, graphics);
+        ReleaseSemaphore(graphics->ActiViewCprSemaphore);
+        return;
+    }
+#endif
+
     if (!pcCacheNativeDBufInfo(viewport, info, graphics)) {
         ReleaseSemaphore(graphics->ActiViewCprSemaphore);
         return;
@@ -529,6 +587,7 @@ void pcChangeVPBitMap(struct ViewPort* viewport asm("a0"), struct BitMap* bitmap
     ReleaseSemaphore(graphics->ActiViewCprSemaphore);
 }
 
+#if GRAPHICS_FRAMEBUFFER
 static BOOL resolveBitmapReply(struct NativeBitmapReply* reply, struct GfxBase* graphics)
 {
     const struct GraphicsDBufInfo* allocation = (APTR)reply->info;
@@ -829,13 +888,21 @@ done:
     return success;
 }
 
+#endif
+
 void pcWakeNativeDisplay(struct GfxBase* graphics)
 {
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcLoadChipsetView(graphics, FALSE);
+        return;
+    }
+#endif
     struct NativeGraphicsDisplay* native = ((struct GraphicsLibrary*)graphics)->native;
 
     if (native) {
         struct ExecBase* SysBase = (APTR)graphics->ExecBase;
-        Signal(&native->task, SIGF_SINGLE);
+        Signal(&native->task, native->frame_signal);
     }
 }
 
@@ -847,6 +914,14 @@ void pcNativeViewportColor4(struct ViewPort* viewport, UWORD index, UWORD color,
     if (viewport) {
         pcUpdateNativeViewportColor4(viewport, index, color, graphics);
     } else {
+#if GRAPHICS_CHIPSET
+        if (pcUsesChipset(graphics)) {
+            pcChipsetColor4(index, color);
+            ReleaseSemaphore(graphics->ActiViewCprSemaphore);
+            return;
+        }
+#endif
+#if GRAPHICS_FRAMEBUFFER
         struct NativeGraphicsDisplay* native = ((struct GraphicsLibrary*)graphics)->native;
 
         // The legacy global path addresses 32 colors in the current bank.
@@ -864,13 +939,87 @@ void pcNativeViewportColor4(struct ViewPort* viewport, UWORD index, UWORD color,
                 presentBlank(native, active->background.flags & BORDER_BLANKING ? 0 : value);
             }
         }
+#endif
     }
 
     ReleaseSemaphore(graphics->ActiViewCprSemaphore);
 }
 
+#if GRAPHICS_FRAMEBUFFER
+static BOOL captureFrameClock(struct NativeGraphicsDisplay* native)
+{
+    struct Device* TimerBase = native->timer.tr_node.io_Device;
+    struct ExecBase* SysBase = (APTR)native->graphics->ExecBase;
+    ULONG frequency = ReadEClock(&native->frame_start);
+    ULONG frames = SysBase->VBlankFrequency;
+
+    if (!frames || frequency < frames) {
+        return FALSE;
+    }
+
+    native->frame_ticks = frequency / frames;
+    return TRUE;
+}
+
+#endif
+
+ULONG pcVBeamPos(struct GfxBase* graphics asm("a6"))
+{
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        return pcChipsetBeamPosition();
+    }
+#endif
+#if GRAPHICS_FRAMEBUFFER
+    struct ExecBase* SysBase = (APTR)graphics->ExecBase;
+    struct EClockVal now, start;
+    ULONG period, rows;
+
+    // A frame interrupt updates the two-word epoch and its period together.
+    // Exclude it while sampling, preserving the caller's interrupt nesting.
+    Disable();
+    struct NativeGraphicsDisplay* native = ((struct GraphicsLibrary*)graphics)->native;
+
+    if (!native) {
+        Enable();
+        return 0;
+    }
+
+    struct Device* TimerBase = native->timer.tr_node.io_Device;
+    ReadEClock(&now);
+    start = native->frame_start;
+    period = native->frame_ticks;
+    const struct MonitorSpec* monitor = graphics->current_monitor ?
+        graphics->current_monitor : graphics->natural_monitor;
+    rows = monitor && monitor->total_rows ? monitor->total_rows : 1;
+    Enable();
+
+    ULONG elapsed = now.ev_lo - start.ev_lo;
+    ULONG high = now.ev_hi - start.ev_hi - (now.ev_lo < start.ev_lo);
+
+    // Hold the final logical row when frame delivery is delayed or masked.
+    // Only an actual software frame advances the epoch; polling must not
+    // invent frame completions or imply physical monitor synchronization.
+    if (high || elapsed >= period) {
+        return rows - 1;
+    }
+
+    // The product can exceed 32 bits at high EClock rates. Its quotient is
+    // bounded by rows, so the native 68020 wide divide cannot overflow.
+    ULONG remainder;
+    __asm__("mulu.l %2,%1:%0\n\tdivu.l %3,%1:%0"
+        : "+&d"(elapsed), "=&d"(remainder) : "d"(rows), "d"(period) : "cc");
+
+    return elapsed;
+#else
+    return 0;
+#endif
+}
+
+#if GRAPHICS_FRAMEBUFFER
 static ULONG nativeFrame(struct NativeGraphicsDisplay* native asm("a1"))
 {
+    captureFrameClock(native);
     pcGraphicsFrame(native->graphics);
     pcWakeNativeDisplay(native->graphics);
 
@@ -883,8 +1032,14 @@ static void displayTask(void)
     struct Task* task = FindTask(NULL);
     struct NativeGraphicsDisplay* native = task->tc_UserData;
 
+    // Exec uses SIGF_SINGLE internally for semaphore waits. Frame arrivals
+    // must not wake those waits before their semaphore has been acquired.
+    BYTE signal = AllocSignal(-1);
+    native->frame_signal = signal < 0 ? 0 : 1UL << signal;
+    Signal(native->starting, native->started_signal);
+
     for (;;) {
-        Wait(SIGF_SINGLE);
+        Wait(native->frame_signal);
         Forbid();
         struct Task* stopping = native->stopping;
 
@@ -903,8 +1058,16 @@ static void displayTask(void)
     }
 }
 
+#endif
+
 BOOL pcOpenNativeDisplay(struct GfxBase* graphics)
 {
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        return pcOpenChipsetDisplay(graphics);
+    }
+#endif
+#if GRAPHICS_FRAMEBUFFER
     struct GraphicsLibrary* library = (APTR)graphics;
 
     if (library->native) {
@@ -932,6 +1095,23 @@ BOOL pcOpenNativeDisplay(struct GfxBase* graphics)
     }
 
     native->graphics = graphics;
+    native->timer.tr_node.io_Message.mn_Length = sizeof(native->timer);
+
+    if (OpenDevice(TIMERNAME, UNIT_ECLOCK, &native->timer.tr_node, 0)) {
+        FreeMem(native->stack, DISPLAY_STACK_SIZE);
+        pcCloseGraphicsFramebuffer(&native->output, SysBase);
+        FreeMem(native, sizeof(*native));
+        return FALSE;
+    }
+
+    if (!captureFrameClock(native)) {
+        CloseDevice(&native->timer.tr_node);
+        FreeMem(native->stack, DISPLAY_STACK_SIZE);
+        pcCloseGraphicsFramebuffer(&native->output, SysBase);
+        FreeMem(native, sizeof(*native));
+        return FALSE;
+    }
+
     struct Task* task = &native->task;
     task->tc_Node.ln_Type = NT_TASK;
     task->tc_Node.ln_Name = "graphics.library display";
@@ -945,9 +1125,42 @@ BOOL pcOpenNativeDisplay(struct GfxBase* graphics)
     native->frame.is_Node.ln_Name = "graphics.library frame";
     native->frame.is_Data = native;
     native->frame.is_Code = (APTR)nativeFrame;
+
+    BYTE signal = AllocSignal(-1);
+
+    if (signal < 0) {
+        CloseDevice(&native->timer.tr_node);
+        FreeMem(native->stack, DISPLAY_STACK_SIZE);
+        pcCloseGraphicsFramebuffer(&native->output, SysBase);
+        FreeMem(native, sizeof(*native));
+        return FALSE;
+    }
+
+    native->starting = FindTask(NULL);
+    native->started_signal = 1UL << signal;
+    SetSignal(0, native->started_signal);
     Forbid();
+
     if (!AddTask(task, displayTask, NULL)) {
         Permit();
+        FreeSignal(signal);
+        CloseDevice(&native->timer.tr_node);
+        FreeMem(native->stack, DISPLAY_STACK_SIZE);
+        pcCloseGraphicsFramebuffer(&native->output, SysBase);
+        FreeMem(native, sizeof(*native));
+        return FALSE;
+    }
+
+    // Wait releases task exclusion while the new task allocates its signal.
+    // Do not publish the frame server until that task is ready to receive it.
+    Wait(native->started_signal);
+    FreeSignal(signal);
+    native->starting = NULL;
+
+    if (!native->frame_signal) {
+        RemTask(task);
+        Permit();
+        CloseDevice(&native->timer.tr_node);
         FreeMem(native->stack, DISPLAY_STACK_SIZE);
         pcCloseGraphicsFramebuffer(&native->output, SysBase);
         FreeMem(native, sizeof(*native));
@@ -959,10 +1172,19 @@ BOOL pcOpenNativeDisplay(struct GfxBase* graphics)
     Permit();
 
     return TRUE;
+#else
+    return FALSE;
+#endif
 }
 
 BOOL pcCloseNativeDisplay(struct GfxBase* graphics)
 {
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        return pcCloseChipsetDisplay(graphics);
+    }
+#endif
+#if GRAPHICS_FRAMEBUFFER
     struct GraphicsLibrary* library = (APTR)graphics;
     struct NativeGraphicsDisplay* native = library->native;
 
@@ -986,7 +1208,7 @@ BOOL pcCloseNativeDisplay(struct GfxBase* graphics)
     SetSignal(0, native->stopped_signal);
     native->stopping = FindTask(NULL);
     RemIntServer(INTB_VERTB, &native->frame);
-    Signal(&native->task, SIGF_SINGLE);
+    Signal(&native->task, native->frame_signal);
     Wait(native->stopped_signal);
     RemTask(&native->task);
     ObtainSemaphore(graphics->ActiViewCprSemaphore);
@@ -995,16 +1217,25 @@ BOOL pcCloseNativeDisplay(struct GfxBase* graphics)
     completeBitmapReplies(native, NULL, 0, TRUE);
     pcCloseGraphicsFramebuffer(&native->output, SysBase);
     ReleaseSemaphore(graphics->ActiViewCprSemaphore);
+    CloseDevice(&native->timer.tr_node);
     FreeMem(native->stack, DISPLAY_STACK_SIZE);
     FreeMem(native, sizeof(*native));
     FreeSignal(signal);
     Permit();
 
     return TRUE;
+#else
+    return FALSE;
+#endif
 }
 
 static LONG programMonitor(struct MonitorSpec* monitor)
 {
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(monitor->ms_Node.xln_Library)) {
+        return pcProgramChipsetMonitor(monitor);
+    }
+#endif
     // This backend retains the firmware mode. Monitor geometry is consumed by
     // the next serialized refresh, not translated into chipset register writes.
     pcWakeNativeDisplay(monitor->ms_Node.xln_Library);
@@ -1018,6 +1249,11 @@ static LONG initMonitor(struct ExtendedNode* node asm("a0"), UWORD flags asm("d0
     struct MonitorSpec* monitor = (APTR)node;
     UWORD result = pcInitMonitorSpec(monitor, flags, programMonitor, graphics);
     monitor->ms_KillView = (APTR)pcKillNativeView;
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        monitor->ms_KillView = (APTR)pcKillChipsetView;
+    }
+#endif
 
     return result;
 }
@@ -1032,6 +1268,14 @@ static LONG loadView(struct View* view, struct GfxBase* graphics asm("a6"))
         return 0;
     }
 
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics)) {
+        pcLoadChipsetView(graphics, TRUE);
+        ReleaseSemaphore(graphics->ActiViewCprSemaphore);
+        return 1;
+    }
+#endif
+#if GRAPHICS_FRAMEBUFFER
     struct NativeGraphicsDisplay* native = ((struct GraphicsLibrary*)graphics)->native;
 
     if (native && !pcActiveViewFields(graphics)->enabled) {
@@ -1048,6 +1292,7 @@ static LONG loadView(struct View* view, struct GfxBase* graphics asm("a6"))
     } else {
         pcWakeNativeDisplay(graphics);
     }
+#endif
 
     ReleaseSemaphore(graphics->ActiViewCprSemaphore);
 

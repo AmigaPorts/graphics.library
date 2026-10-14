@@ -13,7 +13,7 @@ LONG pcMrgCop(struct View* view asm("a1"), struct GfxBase* graphics asm("a6"));
 ULONG pcMakeVPort(struct View* view asm("a0"), struct ViewPort* viewport asm("a1"),
     struct GfxBase* graphics asm("a6"), ULONG caller_d6 asm("d6"));
 void pcScrollVPort(struct ViewPort* viewport asm("a0"), struct GfxBase* graphics asm("a6"),
-    ULONG caller_d3 asm("d3"));
+    ULONG caller_d3 asm("d3"), ULONG caller_d5 asm("d5"));
 void pcChangeVPBitMap(struct ViewPort* viewport asm("a0"), struct BitMap* bitmap asm("a1"),
     struct DBufInfo* info asm("a2"), struct GfxBase* graphics asm("a6"));
 
@@ -24,13 +24,15 @@ LONG pcDispatchLoadView(struct View* view, MonitorViewFunction default_method, s
 LONG pcDispatchMrgCop(struct View* view, MonitorViewFunction default_method, struct GfxBase* graphics);
 
 // Driver slot 2 owns scrolling. Preserve A0/A6 and the method address in A1
-// at entry, and forward caller_d3 for the original short-field address rule.
+// at entry, and forward D3 for the original short-field address rule and D5
+// for the chipset fetch phase. These are retained caller registers, not new
+// public parameters.
 // The caller supplies the native method for absent/legacy maps or
 // an absent extra/table; a selected driver's slot is never replaced here.
 typedef void (*ViewPortScrollFunction)(struct ViewPort* viewport asm("a0"),
     struct GfxBase* graphics asm("a6"));
 void pcDispatchScrollVPort(struct ViewPort* viewport, ViewPortScrollFunction default_method,
-    struct GfxBase* graphics, ULONG caller_d3);
+    struct GfxBase* graphics, ULONG caller_d3, ULONG caller_d5);
 
 // Driver table slot 3 points to a NULL-terminated preparation sequence. The
 // first method takes these five stack arguments; subsequent methods take the
@@ -47,7 +49,7 @@ extern const APTR pcNativeViewPortBuildMethods[];
 extern const APTR pcNativeViewPortVectors[5];
 
 void pcNativeScrollVPort(struct ViewPort* viewport asm("a0"), struct GfxBase* graphics asm("a6"),
-    ULONG caller_d3 asm("d3"));
+    ULONG caller_d3 asm("d3"), ULONG caller_d5 asm("d5"));
 
 // Preparation methods receive this much WORD-aligned temporary storage. Each
 // driver owns its contents; native framebuffer state does not encode chipset
@@ -1181,7 +1183,7 @@ void pcPrepareViewPortScroll(struct View* view, struct ViewPort* viewport, struc
 // No display generation is constructed or activated. The public dispatcher
 // selects the native slot-2 method, which supplies the native table and prefix.
 void pcScrollNativeViewPort(struct ViewPort* viewport, APTR default_vectors, APTR dual_vectors,
-    const UWORD* steps, struct GfxBase* graphics, ULONG caller_d3);
+    const UWORD* steps, struct GfxBase* graphics, ULONG caller_d3, ULONG caller_d5);
 
 // Native preparation ownership, after validating the display. A borrowed
 // extra is retained; a newly allocated one belongs to this build sequence.

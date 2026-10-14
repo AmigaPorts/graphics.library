@@ -74,10 +74,10 @@ const APTR graphicsFunctions[GRAPHICS_VECTOR_COUNT + 1] = {
     (APTR)pcAreaDraw, // -258 AreaDraw
     (APTR)pcAreaEnd, // -264 AreaEnd
     (APTR)pcWaitTOF, // -270 WaitTOF
-    NULL, // -276 QBlit (not implemented)
+    (APTR)pcQBlit, // -276 QBlit
     (APTR)pcInitArea, // -282 InitArea
     (APTR)pcSetRGB4, // -288 SetRGB4
-    NULL, // -294 QBSBlit (not implemented)
+    (APTR)pcQBSBlit, // -294 QBSBlit
     (APTR)pcBltClear, // -300 BltClear
     (APTR)pcRectFill, // -306 RectFill
     (APTR)pcBltPattern, // -312 BltPattern
@@ -92,7 +92,7 @@ const APTR graphicsFunctions[GRAPHICS_VECTOR_COUNT + 1] = {
     (APTR)pcCBump, // -366 CBump
     (APTR)pcCMove, // -372 CMove
     (APTR)pcCWait, // -378 CWait
-    NULL, // -384 VBeamPos (not implemented)
+    (APTR)pcVBeamPos, // -384 VBeamPos
     (APTR)pcInitBitMap, // -390 InitBitMap
     (APTR)pcScrollRaster, // -396 ScrollRaster
     (APTR)pcWaitBOVP, // -402 WaitBOVP

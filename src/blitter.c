@@ -33,8 +33,8 @@ BOOL pcDispatchBlitter(APTR registers, struct GfxBase* base)
         base->Flags |= BLITTER_FINAL_TRANSFER;
     }
 
-    // The operation has only been submitted. Even a final callback must keep
-    // its node and ownership until the backend reports transfer completion.
+    // A callback can start DMA or skip a stage. Even a final callback keeps
+    // its node and ownership until the backend confirms that hardware is idle.
     return TRUE;
 }
 
@@ -177,13 +177,13 @@ static void queueBlit(struct bltnode* node, struct GfxBase* base)
     Enable();
 }
 
-void pcQBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"))
+void pcQueueBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"))
 {
     node->beamsync &= 0x7fff;
     queueBlit(node, base);
 }
 
-void pcQBSBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"))
+void pcQueueBSBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"))
 {
     // Both calls use the same FIFO. The high bit requests synchronization;
     // the remaining value is clamped using the original unsigned comparison.

@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #include "internal/view.h"
+#include "internal/backend.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset.h"
+#endif
 #include "internal/library.h"
 #include "internal/copper.h"
 #include "internal/color.h"
@@ -28,8 +32,17 @@ static ULONG buildViewPortList(struct View* view, struct ViewPort* viewport,
     // Keep list selectors consistent with the prepared software layout. The
     // field owner consumes these records alongside live palette updates;
     // zero selectors would erase non-default banks, XOR and sprite policy.
-    // Geometry and plane sources remain native snapshot state, not MMIO.
-    return pcBuildColorList(viewport, state->color_mask, display_control, sprite_control);
+    // Framebuffer geometry stays in snapshots. The chipset consumer also
+    // encodes those sources into its real Copper field lists below.
+    ULONG result = pcBuildColorList(viewport, state->color_mask, display_control, sprite_control);
+
+#if GRAPHICS_CHIPSET
+    if (result == MVP_OK && pcUsesChipset(graphics)) {
+        result = pcBuildChipsetViewPortList(viewport, state, graphics);
+    }
+#endif
+
+    return result;
 }
 
 static ULONG finishViewPortList(struct View* view, struct ViewPort* viewport,
@@ -127,7 +140,7 @@ LONG pcMrgCop(struct View* view asm("a1"), struct GfxBase* graphics asm("a6"))
 }
 
 void pcDispatchScrollVPort(struct ViewPort* viewport, ViewPortScrollFunction default_method,
-    struct GfxBase* graphics, ULONG caller_d3)
+    struct GfxBase* graphics, ULONG caller_d3, ULONG caller_d5)
 {
     ViewPortScrollFunction method = default_method;
     const struct ColorMap* map = viewport->ColorMap;
@@ -142,28 +155,29 @@ void pcDispatchScrollVPort(struct ViewPort* viewport, ViewPortScrollFunction def
     register APTR entry asm("a1") = (APTR)method;
     register struct GfxBase* base asm("a6") = graphics;
     register ULONG field_address asm("d3") = caller_d3;
+    register ULONG fetch_phase asm("d5") = caller_d5;
 
     __asm__ volatile(
         "jsr (%1)"
         : "+r"(argument), "+r"(entry)
-        : "r"(base), "r"(field_address)
+        : "r"(base), "r"(field_address), "r"(fetch_phase)
         : "d0", "d1", "cc", "memory");
 }
 
 void pcScrollVPort(struct ViewPort* viewport asm("a0"), struct GfxBase* graphics asm("a6"),
-    ULONG caller_d3 asm("d3"))
+    ULONG caller_d3 asm("d3"), ULONG caller_d5 asm("d5"))
 {
-    pcDispatchScrollVPort(viewport, (APTR)pcNativeScrollVPort, graphics, caller_d3);
+    pcDispatchScrollVPort(viewport, (APTR)pcNativeScrollVPort, graphics, caller_d3, caller_d5);
 }
 
 void pcNativeScrollVPort(struct ViewPort* viewport asm("a0"), struct GfxBase* graphics asm("a6"),
-    ULONG caller_d3 asm("d3"))
+    ULONG caller_d3 asm("d3"), ULONG caller_d5 asm("d5"))
 {
     // Geometry, color selection and raster origins precede list construction.
     static const UWORD steps = 3;
 
     pcScrollNativeViewPort(viewport, (APTR)pcNativeViewPortVectors, (APTR)pcNativeViewPortVectors,
-        &steps, graphics, caller_d3);
+        &steps, graphics, caller_d3, caller_d5);
 }
 
 static ULONG normalizeDisplayID(ULONG id)
@@ -345,8 +359,11 @@ void pcPrepareViewPortScroll(struct View* view, struct ViewPort* viewport, struc
 }
 
 void pcScrollNativeViewPort(struct ViewPort* viewport, APTR default_vectors, APTR dual_vectors,
-    const UWORD* steps, struct GfxBase* graphics, ULONG caller_d3)
+    const UWORD* steps, struct GfxBase* graphics, ULONG caller_d3, ULONG caller_d5)
 {
+#if !GRAPHICS_CHIPSET
+    (void)caller_d5;
+#endif
     struct ExecBase* SysBase = (APTR)graphics->ExecBase;
     struct ViewPortScrollInfo info;
     ObtainSemaphore(graphics->ActiViewCprSemaphore);
@@ -365,9 +382,16 @@ void pcScrollNativeViewPort(struct ViewPort* viewport, APTR default_vectors, APT
             state.source_x, state.source_y, state.source_stride);
 
         if (viewport->DspIns) {
-            pcApplyViewPortPlaneScroll(pcPreparedViewPorts(graphics), pcMergedViews(graphics),
-                viewport->DspIns, info.field_extra, fetches, state.interlaced, info.view_modes,
-                info.modes, info.update_intermediate, caller_d3);
+#if GRAPHICS_CHIPSET
+            if (pcUsesChipset(graphics)) {
+                pcScrollChipsetViewPort(viewport, &state, &info, fetches, graphics, caller_d3, caller_d5);
+            } else
+#endif
+            {
+                pcApplyViewPortPlaneScroll(pcPreparedViewPorts(graphics), pcMergedViews(graphics),
+                    viewport->DspIns, info.field_extra, fetches, state.interlaced, info.view_modes,
+                    info.modes, info.update_intermediate, caller_d3);
+            }
         }
     }
 
@@ -4115,7 +4139,13 @@ static BOOL selectViewFields(struct ViewFieldSelection* selection, struct View* 
             &selection->source_field[0]);
 
         if (!selection->display[0]) {
-            return FALSE;
+            // Real chipset DMA consumes the caller's public Copper stream.
+            // Only software presentation requires a retained render snapshot.
+            if (!pcUsesChipset(graphics)) {
+                return FALSE;
+            }
+
+            selection->source_field[0] = 0;
         }
 
         selection->streams[0] = view->LOFCprList->start;
@@ -4125,8 +4155,12 @@ static BOOL selectViewFields(struct ViewFieldSelection* selection, struct View* 
                 &selection->source_field[1]);
 
             if (!selection->display[1]) {
-                pcReleaseViewDisplay(selection->display[0], graphics);
-                return FALSE;
+                if (!pcUsesChipset(graphics)) {
+                    pcReleaseViewDisplay(selection->display[0], graphics);
+                    return FALSE;
+                }
+
+                selection->source_field[1] = 0;
             }
 
             selection->streams[1] = view->SHFCprList->start;
@@ -4281,11 +4315,26 @@ BOOL pcLoadViewState(struct View* view, struct GfxBase* graphics)
 
         if (changed) {
             if (rows || clocks) {
-                if ((monitor->ms_Flags & MSF_REQUEST_SPECIAL) && monitor->ms_Special &&
-                    monitor->ms_Special->do_monitor) {
-                    setupMonitorView(monitor, graphics);
-                    reset_sprites = TRUE;
+                if (monitor->ms_Flags & MSF_REQUEST_SPECIAL) {
+                    if (monitor->ms_Special && monitor->ms_Special->do_monitor) {
+                        setupMonitorView(monitor, graphics);
+                        reset_sprites = TRUE;
+                    }
+#if GRAPHICS_CHIPSET
+                    else if (pcUsesChipset(graphics)) {
+                        // A special monitor without a method does not retain
+                        // the outgoing monitor's beam control on AmigaOS.
+                        pcSetChipsetBeamControl(0);
+                    }
+#endif
                 }
+#if GRAPHICS_CHIPSET
+                else if (pcUsesChipset(graphics)) {
+                    // Reloads of the same monitor with unchanged totals do
+                    // not reapply beam control in the original library.
+                    pcSetChipsetBeamControl(monitor->BeamCon0);
+                }
+#endif
 
                 // The callback can update monitor geometry. The original
                 // copies those live values, but saves pre-callback totals.
@@ -4318,6 +4367,13 @@ BOOL pcLoadViewState(struct View* view, struct GfxBase* graphics)
 
     if (reset_sprites) {
         graphics->Bugs |= 0x10;
+#if GRAPHICS_CHIPSET
+        if (pcUsesChipset(graphics)) {
+            // Restart blanking before the frame handler applies the newly
+            // selected monitor or field mode, as the original LoadView does.
+            pcResetChipsetBlanking();
+        }
+#endif
     }
 
     commitViewFields(&selection, graphics);

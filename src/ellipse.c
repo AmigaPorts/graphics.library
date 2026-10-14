@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 // Integer ellipse rasterization through the public pixel owner.
 #include "internal/ellipse.h"
+#include "internal/backend.h"
+#include "internal/native.h"
 
 #include <stdint.h>
 #define __NOLIBBASE__
@@ -35,6 +37,13 @@ void pcDrawEllipse(struct RastPort* port asm("a1"), WORD center_x asm("d0"), WOR
 {
     BOOL one_dot = (port->Flags & ONE_DOT) != 0;
     BOOL edge_mask = !port->Layer && port->minterms[0] == 0x6a && (port->Mask & 1) && port->BitMap->Depth == 1;
+
+    // The direct XOR path bypasses WritePixel. Finish preceding DMA before
+    // changing its raster, including when the caller already owns the blitter.
+    if (edge_mask && pcUsesChipset(graphics)) {
+        pcWaitBlit(graphics);
+    }
+
     LONG x = radius_x, y = 0;
     ULONG square_x = (LONG)radius_x * radius_x;
     ULONG square_y = (LONG)radius_y * radius_y;
