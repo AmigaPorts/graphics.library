@@ -94,6 +94,40 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
     ULONG remaining = width;
 	
     while (remaining) {
+        // Only the first and last destination words need edge masks. Keep
+        // each source read before its corresponding write, including when
+        // a shifted word needs bits from the following source word.
+        if (!backward && remaining >= 16 && !((dest_x + width - remaining) & 15) &&
+            source && (ULONG)source != 0xffffffff) {
+            ULONG offset = width - remaining;
+            const UWORD* input = source + ((source_x + offset) >> 4);
+            UWORD* output = dest + ((dest_x + offset) >> 4);
+            unsigned shift = (source_x + offset) & 15;
+            ULONG words = remaining >> 4;
+
+            if (shift) {
+                unsigned right = 16 - shift;
+
+                while (words--) {
+                    UWORD bits = (*input << shift) | (input[1] >> right);
+
+                    *output = combine(bits, *output, minterm);
+                    ++input;
+                    ++output;
+                }
+            } else {
+                while (words--) {
+                    *output = combine(*input, *output, minterm);
+                    ++input;
+                    ++output;
+                }
+            }
+
+            remaining &= 15;
+
+            continue;
+        }
+
         unsigned count;
         ULONG offset;
     	
