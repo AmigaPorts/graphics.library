@@ -189,12 +189,15 @@ ULONG pcReadPixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
     struct GfxBase* graphics asm("a6"))
 {
     struct Layer* layer = port->Layer;
+    const struct BitMap* map;
 
     if (layer) {
         LockLayerRom(layer);
+        map = pixelStorage(port, &x, &y);
+    } else {
+        map = port->BitMap;
     }
 
-    const struct BitMap* map = pixelStorage(port, &x, &y);
     LONG result = -1;
 
     if (map) {
@@ -226,12 +229,15 @@ LONG pcWritePixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
     struct GfxBase* graphics asm("a6"))
 {
     struct Layer* layer = port->Layer;
+    struct BitMap* map;
 
     if (layer) {
         LockLayerRom(layer);
+        map = pixelStorage(port, &x, &y);
+    } else {
+        map = port->BitMap;
     }
 
-    struct BitMap* map = pixelStorage(port, &x, &y);
     LONG result = -1;
 
     if (map) {
