@@ -220,9 +220,14 @@ static BOOL temporaryFill(struct RastPort* port, ULONG mode, LONG x, LONG y, str
     if (!selected) { return FALSE; }
     UBYTE* mask = (APTR)port->TmpRas->RasPtr;
 
-    // BltClear takes an even byte count; retain the complete TmpRas size.
-    BltClear(mask, bytes & ~1UL, 1);
-    if (bytes & 1) { mask[bytes - 1] = 0; }
+    // Only the comparison raster is cleared, not unused TmpRas capacity.
+    ULONG mask_bytes = (ULONG)stride * rows;
+
+    BltClear(mask, mask_bytes & ~1UL, 1);
+
+    if (mask_bytes & 1) {
+        mask[mask_bytes - 1] = 0;
+    }
 
     // The comparison raster treats unsaved simple-refresh pixels as absent,
     // not as a readable background pen. Complement only for color fill.
