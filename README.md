@@ -34,7 +34,32 @@ optimization. Shared graphics behavior serves both backends. Scaling and
 masked-pattern edge cases still have known compatibility failures.
 
 Testing uses original AmigaOS comparisons and [p96cts](https://github.com/codewiz/p96cts).
-[VolAmos loader support](https://github.com/sidick/volamos/issues/133) is tracked upstream.
+
+## Compatibility
+
+✅ Matches tested original behavior; ❌ known difference or unsupported;
+— not established. These are tested paths, not a claim of complete API parity.
+
+| Operation | Framebuffer | Chipset |
+|---|:---:|:---:|
+| ReadPixel / WritePixel and layer storage | ✅ | ✅ |
+| Bitmap transfers, minterms and clipping | ✅ | ✅ |
+| Text layout, font metrics and software styles | ✅ | ✅ |
+| Lines, ellipses and area fills | ✅ | ✅ |
+| Regions and layer backing storage | ✅ | ✅ |
+| Palette and pen management | ✅ | ✅ |
+| Screen switching and buffer notifications | ✅ | ✅ |
+| Picasso96 display takeover | ✅ | ✅ |
+| `p96cts` output parity with original | ❌ | ✅ |
+| BitMapScale negative-phase cases | ❌ | ❌ |
+| QBlit / QBSBlit hardware callbacks | ❌ | ✅ |
+| Physical beam-position reporting | ❌ | ✅ |
+| Real-hardware compatibility validation | — | — |
+
+Scaling has unresolved differences between emulator references. The PC/P96
+configuration retains a masked-pattern colour discrepancy; chipset comparisons
+match the original, including its existing `p96cts` failures. Framebuffer queued
+blits are intentionally unavailable, and its beam position is logical.
 
 ## Performance
 
