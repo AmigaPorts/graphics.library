@@ -72,20 +72,46 @@ static UBYTE detectChips(struct GfxBase* graphics)
     return GFXF_HR_AGNUS | ((first == 0xfc && second == first && third == first) ? GFXF_HR_DENISE : 0);
 }
 
+static UWORD displayFlags(UWORD identification)
+{
+    if (identification & 0x2000) {
+        return identification & 0x1000 ? NTSC : PAL | REALLY_PAL;
+    }
+
+    // OCS has no ECS PAL/NTSC identification. Observe whether the beam passes
+    // the NTSC field length. The original's initial late sample selects PAL
+    // without REALLY_PAL; only observing that transition sets both flags.
+    ULONG row = pcChipsetBeamPosition();
+
+    if (row > 270) {
+        return LPEN_SWAP_FRAMES | PAL;
+    }
+
+    do {
+        row = pcChipsetBeamPosition();
+    } while (row < 256);
+
+    do {
+        if (row > 270) {
+            return LPEN_SWAP_FRAMES | PAL | REALLY_PAL;
+        }
+
+        row = pcChipsetBeamPosition();
+    } while (row > 50);
+
+    return LPEN_SWAP_FRAMES | NTSC;
+}
+
 void pcInitChipsetRevision(struct GfxBase* graphics)
 {
-    // VPOSR's Agnus identification contains the motherboard PAL/NTSC
-    // selection. Exec's frequency may still be uncalibrated at cold start.
-    UWORD identification = custom->vposr;
-    graphics->DisplayFlags = identification & 0x1000 ? NTSC : PAL;
+    struct ExecBase* SysBase = (APTR)graphics->ExecBase;
 
-    // Original Agnus needs the interlaced field swap when light-pen input is
-    // enabled. Keep this hardware capability independent of SetChipRev.
-    if (!(identification & 0x2000)) {
-        graphics->DisplayFlags |= LPEN_SWAP_FRAMES;
-    } else if (!(identification & 0x1000)) {
-        graphics->DisplayFlags |= REALLY_PAL;
-    }
+    // Exec's frequency may still be uncalibrated at cold start. Keep hardware
+    // display capabilities independent of the public SetChipRev selection.
+    // Exclude task switches while observing the end of an OCS field.
+    Disable();
+    graphics->DisplayFlags = displayFlags(custom->vposr);
+    Enable();
 
     // Original startup reports ECS-compatible operation even on AA hardware.
     // SetChipRev enables the additional capabilities when requested by the OS;
