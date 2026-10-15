@@ -72,6 +72,71 @@ static BOOL clipAxis(const struct Line* line, LONG start, int direction, BOOL ma
     return *first <= *last;
 }
 
+static unsigned outside(const struct Rectangle* bounds, LONG x, LONG y)
+{
+    return (x < bounds->MinX ? 1U : x > bounds->MaxX ? 4U : 0U) | (y < bounds->MinY ? 2U : y > bounds->MaxY ? 8U : 0U);
+}
+
+static LONG intersectionOffset(LONG delta, LONG distance, LONG divisor)
+{
+    LONG product = delta * distance;
+    BOOL negative = (product < 0) != (divisor < 0);
+
+    if (product < 0) {
+        product = -product;
+    }
+
+    if (divisor < 0) {
+        divisor = -divisor;
+    }
+
+    LONG offset = (product + divisor / 2) / divisor;
+
+    return negative ? -offset : offset;
+}
+
+static BOOL intersectsClip(const struct Line* line, const struct Rectangle* bounds, BOOL reverse)
+{
+    LONG dx = line->step_x * (line->major_x ? line->major : line->minor);
+    LONG dy = line->step_y * (line->major_x ? line->minor : line->major);
+    LONG origin_x = line->x + (reverse ? dx : 0);
+    LONG origin_y = line->y + (reverse ? dy : 0);
+    LONG x = origin_x, y = origin_y;
+    LONG end_x = line->x + (reverse ? 0 : dx);
+    LONG end_y = line->y + (reverse ? 0 : dy);
+    unsigned start_code = outside(bounds, x, y);
+    unsigned end_code = outside(bounds, end_x, end_y);
+
+    while (start_code || end_code) {
+        if (start_code & end_code) {
+            return FALSE;
+        }
+
+        unsigned code = start_code ? start_code : end_code;
+        LONG clipped_x, clipped_y;
+
+        if (code & 5) {
+            clipped_x = code & 1 ? bounds->MinX : bounds->MaxX;
+            clipped_y = origin_y + intersectionOffset(dy, clipped_x - origin_x, dx);
+        } else {
+            clipped_y = code & 2 ? bounds->MinY : bounds->MaxY;
+            clipped_x = origin_x + intersectionOffset(dx, clipped_y - origin_y, dy);
+        }
+
+        if (start_code) {
+            x = clipped_x;
+            y = clipped_y;
+            start_code = outside(bounds, x, y);
+        } else {
+            end_x = clipped_x;
+            end_y = clipped_y;
+            end_code = outside(bounds, end_x, end_y);
+        }
+    }
+
+    return TRUE;
+}
+
 static void togglePixel(const struct RastPort* port, const struct BitMap* map, LONG x, LONG y);
 
 static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line, LONG first,
@@ -236,6 +301,13 @@ static BOOL drawClip(const struct RastPort* port, const struct BitMap* map, cons
 
     if (clip->obscured && !clip->BitMap) {
         return whole;
+    }
+
+    // The original rejects a clip using rounded line intersections before
+    // choosing rasterized pixels. A corner pixel can pass the pixel bounds
+    // while both endpoint-relative intersection passes reject the rectangle.
+    if (!whole && !intersectsClip(line, &clip->bounds, FALSE) && !intersectsClip(line, &clip->bounds, TRUE)) {
+        return FALSE;
     }
 
     LONG first = 0, last = line->major;
