@@ -1017,9 +1017,8 @@ void pcBltTemplate(CONST PLANEPTR source asm("a0"), WORD source_x asm("d0"), WOR
 
 // Pattern and mask coordinates are independent: patterns follow the layer's
 // logical origin; the stencil follows the caller's requested rectangle.
-static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask,
-    UWORD mask_stride, const struct Rectangle* bounds, LONG pattern_x, LONG pattern_y, LONG mask_x, LONG mask_y,
-    struct GfxBase* graphics)
+static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask, UWORD mask_stride,
+    const struct Rectangle* bounds, LONG pattern_x, LONG pattern_y, LONG mask_x, LONG mask_y, struct GfxBase* graphics)
 {
     if (bounds->MaxX < bounds->MinX || bounds->MaxY < bounds->MinY) {
         return;
@@ -1042,6 +1041,26 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
     ULONG pattern_rows = port->AreaPtrn ? 1UL << pattern_power : 1;
     unsigned rotation = ((ULONG)bounds->MinX - pattern_x) & 15;
 
+    // A direct stencil supplies complete words, including its padding. The
+    // original masks its last fetched word according to the supplied pitch;
+    // clipped stencils have separate edge handling and must not use this rule.
+    BOOL direct_mask = mask && !port->Layer;
+    ULONG mask_words = (bounds->MaxX >> 4) - (bounds->MinX >> 4) + 1;
+    ULONG row_step = direct_mask ? pattern_rows : 1;
+    ULONG phases = row_step < height ? row_step : height;
+    UWORD last_mask = 0;
+    LONG mask_step = mask_stride;
+
+    if (direct_mask) {
+        if (mask_words * 2 == mask_stride) {
+            last_mask = 0xffffUL << (15 - ((width - 1) & 15));
+        }
+
+        // Each pattern phase starts at an unsigned row offset, then repeats
+        // through the original signed-WORD row displacement.
+        mask_step = (WORD)(mask_stride * row_step - mask_words * 2) + mask_words * 2;
+    }
+
     for (unsigned plane = 0; plane < dest->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
             continue;
@@ -1059,49 +1078,65 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
             pattern += plane * pattern_rows;
         }
 
-        UBYTE* output = dest->Planes[plane] + (LONG)bounds->MinY * dest->BytesPerRow;
-        const UBYTE* input = (const UBYTE*)mask;
+        for (ULONG phase = 0; phase < phases; ++phase) {
+            UBYTE* output = dest->Planes[plane] + ((LONG)bounds->MinY + phase) * dest->BytesPerRow;
+            const UBYTE* input = (const UBYTE*)mask;
+            UWORD carry = 0;
 
-        if (input) {
-            input += mask_y * mask_stride;
-        }
-
-        for (ULONG y = 0; y < height; ++y) {
-            UWORD bits = pattern ? pattern[((ULONG)pattern_y + y) & (pattern_rows - 1)] : 0xffff;
-
-            if (rotation) {
-                bits = (bits >> rotation) | (bits << (16 - rotation));
+            if (input) {
+                input += (mask_y + phase) * mask_stride;
             }
 
-            ULONG remaining = width;
-            LONG x = bounds->MinX;
+            for (ULONG y = phase; y < height; y += row_step) {
+                UWORD bits = pattern ? pattern[((ULONG)pattern_y + y) & (pattern_rows - 1)] : 0xffff;
 
-            while (remaining) {
-                unsigned shift = x & 15;
-                unsigned count = 16 - shift;
-
-                if (count > remaining) {
-                    count = remaining;
+                if (rotation) {
+                    bits = (bits >> rotation) | (bits << (16 - rotation));
                 }
 
-                UWORD selected = (0xffffUL >> (16 - count)) << (16 - shift - count);
+                ULONG remaining = direct_mask ? mask_words * 16 : width;
+                LONG x = direct_mask ? bounds->MinX & ~15 : bounds->MinX;
+                const UWORD* stencil = (const UWORD*)input;
 
-                if (input) {
-                    selected &= sourceBits((const UWORD*)input, mask_x + width - remaining, count) >> shift;
+                while (remaining) {
+                    unsigned shift = x & 15;
+                    unsigned count = 16 - shift;
+
+                    if (count > remaining) {
+                        count = remaining;
+                    }
+
+                    UWORD selected = (0xffffUL >> (16 - count)) << (16 - shift - count);
+
+                    if (direct_mask) {
+                        UWORD next = *stencil++;
+                        unsigned offset = bounds->MinX & 15;
+
+                        if (remaining == 16) {
+                            next &= last_mask;
+                        }
+
+                        // Preserve the previous word across rows of one phase:
+                        // nonzero stencil padding can also select left-edge pixels.
+                        selected = offset ? (carry << (16 - offset)) | (next >> offset) : next;
+                        carry = next;
+                    } else if (input) {
+                        selected &= sourceBits((const UWORD*)input, mask_x + width - remaining, count) >> shift;
+                    }
+
+                    UWORD* word = (UWORD*)output + (x >> 4);
+                    UWORD old = *word;
+                    *word = (old & ~selected) | (combine(bits, old, minterm) & selected);
+                    x += count;
+                    remaining -= count;
                 }
 
-                UWORD* word = (UWORD*)output + (x >> 4);
-                UWORD old = *word;
-                *word = (old & ~selected) | (combine(bits, old, minterm) & selected);
-                x += count;
-                remaining -= count;
-            }
+                if (y + row_step < height) {
+                    output += row_step * dest->BytesPerRow;
 
-            if (y + 1 < height) {
-                output += dest->BytesPerRow;
-
-                if (input) {
-                    input += mask_stride;
+                    if (input) {
+                        input += mask_step;
+                    }
                 }
             }
         }
