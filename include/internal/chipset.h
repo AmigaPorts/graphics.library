@@ -11,6 +11,7 @@ struct ChipsetGraphicsDisplay {
     struct GfxBase* graphics;
     UWORD saved_dma;
     UWORD saved_interrupts;
+    UBYTE saved_alarm_select;
     BOOL transfer;
 };
 

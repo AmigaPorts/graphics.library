@@ -13,14 +13,19 @@
 
 #include <exec/memory.h>
 #include <hardware/custom.h>
+#include <hardware/cia.h>
 #include <hardware/dmabits.h>
 #include <hardware/intbits.h>
 #define __NOLIBBASE__
 #include <proto/exec.h>
+#include <proto/cia.h>
 
 // The custom-chip address is part of the real Amiga hardware specification.
 // This translation unit is absent from a framebuffer-only build.
 static volatile struct Custom* const custom = (APTR)0xdff000;
+static volatile struct CIA* const ciab = (APTR)0xbfd000;
+
+enum { BLITTER_BEAM_WAIT = 1U << 6, EXTERNAL_RESYNC = 1U << 1 };
 
 ULONG pcChipsetBeamPosition(void)
 {
@@ -295,11 +300,57 @@ LONG pcKillChipsetView(struct MonitorSpec* monitor asm("a0"), struct GfxBase* gr
     return 0;
 }
 
+static void resetBeamClock(void)
+{
+    // CIAB's TOD input counts horizontal syncs. Rebase it at each vertical
+    // interrupt, retaining the beam position reached while servicing the frame.
+    ciab->ciacrb &= ~CIACRBF_ALARM;
+    ciab->ciatodhi = 0;
+    ciab->ciatodmid = 0;
+    ciab->ciatodlow = custom->vhposr >> 8;
+    ciab->ciacrb |= CIACRBF_ALARM;
+}
+
+static void waitForBeam(UWORD line, struct GfxBase* graphics)
+{
+    struct Library* resource = (APTR)graphics->cia;
+
+    if (graphics->system_bplcon0 & EXTERNAL_RESYNC) {
+        line >>= 1;
+    }
+
+    // Move the old alarm beyond the field before clearing its pending request.
+    // Only the CIA resource owns interrupt masking and acknowledgement.
+    AbleICR(resource, CIAICRF_ALRM);
+    ciab->ciacrb |= CIACRBF_ALARM;
+    ciab->ciatodhi = 0;
+    ciab->ciatodmid = 0xff;
+    ciab->ciatodlow = 0xff;
+    SetICR(resource, CIAICRF_ALRM);
+    graphics->Flags |= BLITTER_BEAM_WAIT;
+    ciab->ciatodmid = line >> 8;
+    ciab->ciatodlow = line;
+    AbleICR(resource, CIAICRF_SETCLR | CIAICRF_ALRM);
+}
+
+static ULONG beamAlarm(struct GfxBase* graphics asm("a1"))
+{
+    struct ExecBase* SysBase = (APTR)graphics->ExecBase;
+    AbleICR((APTR)graphics->cia, CIAICRF_ALRM);
+
+    if (graphics->Flags & BLITTER_BEAM_WAIT) {
+        graphics->Flags &= ~BLITTER_BEAM_WAIT;
+        Cause(&graphics->bltsrv);
+    }
+
+    return 0;
+}
+
 static void dispatchBlitter(struct ChipsetGraphicsDisplay* chipset)
 {
     struct GfxBase* graphics = chipset->graphics;
 
-    if (chipset->transfer) {
+    if (chipset->transfer || (graphics->Flags & BLITTER_BEAM_WAIT)) {
         return;
     }
 
@@ -310,10 +361,12 @@ static void dispatchBlitter(struct ChipsetGraphicsDisplay* chipset)
         if ((UWORD)node->beamsync & 0x8000) {
             UWORD line = (UWORD)node->beamsync & 0x7fff;
 
-            while (pcChipsetBeamPosition() < line) {
-            }
-
             node->beamsync &= 0x7fff;
+
+            if (pcChipsetBeamPosition() < line) {
+                waitForBeam(line, graphics);
+                return;
+            }
         }
 
         // Retire any completed transfer's interrupt before starting another
@@ -387,6 +440,15 @@ static ULONG chipsetFrame(struct GfxBase* graphics asm("a1"))
         selectField(graphics);
     }
 
+    resetBeamClock();
+
+    if (graphics->Flags & BLITTER_BEAM_WAIT) {
+        struct ExecBase* SysBase = (APTR)graphics->ExecBase;
+        AbleICR((APTR)graphics->cia, CIAICRF_ALRM);
+        graphics->Flags &= ~BLITTER_BEAM_WAIT;
+        Cause(&graphics->bltsrv);
+    }
+
     return pcGraphicsFrame(graphics);
 }
 
@@ -405,7 +467,19 @@ BOOL pcOpenChipsetDisplay(struct GfxBase* graphics)
         return FALSE;
     }
 
+    graphics->cia = OpenResource("ciab.resource");
+
+    if (!graphics->cia) {
+        FreeMem(chipset, sizeof(*chipset));
+        return FALSE;
+    }
+
     chipset->graphics = graphics;
+    graphics->timsrv.is_Node.ln_Type = NT_UNKNOWN;
+    graphics->timsrv.is_Node.ln_Pri = 10;
+    graphics->timsrv.is_Node.ln_Name = GRAPHICSNAME;
+    graphics->timsrv.is_Data = graphics;
+    graphics->timsrv.is_Code = (APTR)beamAlarm;
 
     // Keep the original public server and priority: clients may replace its
     // callback, and lower-priority VBlank servers observe completed graphics work.
@@ -425,6 +499,17 @@ BOOL pcOpenChipsetDisplay(struct GfxBase* graphics)
     graphics->bltsrv.is_Code = (APTR)startBlitter;
 
     Disable();
+
+    if (AddICRVector((APTR)graphics->cia, CIAICRB_ALRM, &graphics->timsrv)) {
+        Enable();
+        graphics->cia = NULL;
+        FreeMem(chipset, sizeof(*chipset));
+        return FALSE;
+    }
+
+    AbleICR((APTR)graphics->cia, CIAICRF_ALRM);
+    chipset->saved_alarm_select = ciab->ciacrb & CIACRBF_ALARM;
+    resetBeamClock();
     chipset->saved_dma = custom->dmaconr;
     chipset->saved_interrupts = custom->intenar;
     library->chipset = chipset;
@@ -455,6 +540,9 @@ BOOL pcCloseChipsetDisplay(struct GfxBase* graphics)
     Disable();
     custom->intena = INTF_BLIT;
     RemIntServer(INTB_VERTB, &graphics->vbsrv);
+    RemICRVector((APTR)graphics->cia, CIAICRB_ALRM, &graphics->timsrv);
+    ciab->ciacrb = (ciab->ciacrb & ~CIACRBF_ALARM) | chipset->saved_alarm_select;
+    graphics->cia = NULL;
     SetIntVector(INTB_BLIT, chipset->previous_blitter);
     custom->intena = INTF_SETCLR | (chipset->saved_interrupts & INTF_BLIT);
     custom->dmacon = DMAF_BLITTER & ~chipset->saved_dma;
