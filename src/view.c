@@ -1005,6 +1005,12 @@ struct ViewPortDisplaySnapshot* pcAllocViewPortDisplay(const struct ViewPort* vi
     // unattached map selects priority four, even if this viewport was edited.
     UBYTE priorities = map && map->cm_vp ? map->cm_vp->SpritePriorities : 0x24;
 
+    // EHB's mode defaults keep sprites in front of either playfield. The
+    // original combines these defaults with the caller's priority bits.
+    if (state->modes & EXTRA_HALFBRITE) {
+        priorities |= 0x24;
+    }
+
     for (unsigned field = 0; field < 2; ++field) {
         unsigned priority = (priorities >> (3 * field)) & 7;
         snapshot->sprite_mask[field] = spritePriorityMask(priority);

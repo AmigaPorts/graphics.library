@@ -510,6 +510,12 @@ ULONG pcBuildChipsetViewPortList(
     UWORD priority = viewPortPriority(viewport->ColorMap, graphics);
     priority |= state->modes & PFBA ? 0x40 : 0;
 
+    // The EHB display mode keeps both playfields behind sprites, even when
+    // VideoControl supplies a lower priority in the attached ColorMap.
+    if (state->modes & EXTRA_HALFBRITE) {
+        priority |= 0x24;
+    }
+
     // AGA disables extra-half-brite decoding in every other display mode.
     if ((graphics->ChipRevBits0 & GFXF_AA_LISA) && !(state->modes & EXTRA_HALFBRITE)) {
         priority |= 0x0200;
