@@ -54,7 +54,7 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
-Previous values precede the patterned-row optimization. These replace the
+Previous values precede the incremental line-row optimization. These replace the
 older variable-speed baseline; values from the two configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
@@ -62,13 +62,13 @@ older variable-speed baseline; values from the two configurations cannot be comp
 | Horizontal scrolling | 1.00 | 9.00 | 9.00 |
 | Vertical scrolling | 1.00 | Unverified | Unverified |
 | Text | 1.00 | 9.73 | 9.73 |
-| Rectangle fill | 1.00 | **4.25** | 11.61 |
+| Rectangle fill | 1.00 | 4.25 | 4.25 |
 | Draw ellipse | 1.00 | 1.53 | 1.53 |
 | Draw circle | 1.00 | 1.53 | 1.53 |
 | WritePixel | 1.00 | 2.11 | 2.11 |
-| Horizontal lines | 1.00 | 10.75 | 10.75 |
-| Vertical lines | 1.00 | 10.75 | 10.75 |
-| Diagonal lines | 1.00 | 10.51 | 10.51 |
+| Horizontal lines | 1.00 | **8.79** | 10.75 |
+| Vertical lines | 1.00 | **8.78** | 10.75 |
+| Diagonal lines | 1.00 | **8.52** | 10.51 |
 | Filled ellipse | 1.00 | 3.75 | 3.75 |
 | Filled circle | 1.00 | 3.89 | 3.89 |
 | Area fill | 1.00 | 7.26 | 7.26 |
