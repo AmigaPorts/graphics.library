@@ -74,9 +74,9 @@ static BOOL clipAxis(const struct Line* line, LONG start, int direction, BOOL ma
 
 static void togglePixel(const struct RastPort* port, const struct BitMap* map, LONG x, LONG y);
 
-static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line,
-    LONG first, LONG last, LONG storage_x, LONG storage_y, BOOL one_dot,
-    BOOL continuation, struct GfxBase* graphics)
+static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line, LONG first,
+    LONG last, LONG storage_x, LONG storage_y, BOOL one_dot, BOOL continuation, UBYTE initial_phase,
+    struct GfxBase* graphics)
 {
     BOOL chipset = pcUsesChipset(graphics);
 
@@ -110,7 +110,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         UBYTE* data = map->Planes[plane];
         LONG pixel_x = x, pixel_y = y, previous_y = y - line->step_y;
         LONG remainder = error;
-        unsigned phase = line->phase - first;
+        unsigned phase = initial_phase;
 
         for (LONG i = first; i <= last; ++i) {
             if (!one_dot || pixel_y != previous_y) {
@@ -255,16 +255,42 @@ static BOOL drawClip(const struct RastPort* port, const struct BitMap* map, cons
         storage_y = clip->bounds.MinY;
     }
 
+    UBYTE phase = line->phase;
+
+    if (!whole) {
+        LONG start = (line->major_x ? line->x : line->y) + (line->major_x ? line->step_x : line->step_y) * first;
+        WORD cursor = line->major_x ? port->cp_x : port->cp_y;
+        WORD origin = line->major_x ? port->Layer->bounds.MinX : port->Layer->bounds.MinY;
+        LONG storage = line->major_x ? storage_x : storage_y;
+        WORD adjustment = -origin;
+
+        // Clipped patterns measure from the original cursor and layer origin,
+        // even after scrolling or when drawing into the superbitmap. Saved
+        // rectangles additionally account for their own raster coordinates.
+        if (clip->obscured) {
+            WORD clip_end = line->major_x ? clip->bounds.MaxX : clip->bounds.MaxY;
+            adjustment = start < cursor ? storage + origin + 2 * (cursor - clip_end) : storage - origin;
+        }
+
+        LONG distance = start - storage - cursor + adjustment;
+
+        if (distance < 0) {
+            distance = -distance;
+        }
+
+        phase -= distance;
+    }
+
     // The original clipped path draws every selected pixel. ONE_DOT applies
     // only when the entire line is accepted by a clip, or has no layer.
-    drawSection(port, map, line, first, last, storage_x, storage_y,
-        whole && (port->Flags & ONE_DOT), FALSE, graphics);
+    drawSection(
+        port, map, line, first, last, storage_x, storage_y, whole && (port->Flags & ONE_DOT), FALSE, phase, graphics);
 
     return whole;
 }
 
-void pcDraw(struct RastPort* port asm("a1"), WORD end_x asm("d0"), WORD end_y asm("d1"),
-    struct GfxBase* graphics asm("a6"))
+void pcDraw(
+    struct RastPort* port asm("a1"), WORD end_x asm("d0"), WORD end_y asm("d1"), struct GfxBase* graphics asm("a6"))
 {
     struct Layer* layer = port->Layer;
 
@@ -283,14 +309,14 @@ void pcDraw(struct RastPort* port asm("a1"), WORD end_x asm("d0"), WORD end_y as
         dy = -dy;
     }
 
-    line.major_x = dx > dy;
+    line.major_x = dx >= dy;
     line.major = line.major_x ? dx : dy;
     line.minor = line.major_x ? dy : dx;
     BOOL continuation = !(port->Flags & FRST_DOT) && port->DrawMode == COMPLEMENT;
 
     if (!layer) {
-        drawSection(port, port->BitMap, &line, 0, line.major, 0, 0, port->Flags & ONE_DOT,
-            continuation, graphics);
+        drawSection(
+            port, port->BitMap, &line, 0, line.major, 0, 0, port->Flags & ONE_DOT, continuation, line.phase, graphics);
     } else {
         WORD offset_x = layer->bounds.MinX - layer->Scroll_X;
         WORD offset_y = layer->bounds.MinY - layer->Scroll_Y;
