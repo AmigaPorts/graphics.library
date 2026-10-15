@@ -21,7 +21,7 @@
 #include <proto/graphics.h>
 #include <proto/layers.h>
 
-static UWORD combine(UWORD source, UWORD dest, UBYTE minterm)
+static UWORD combine(UWORD source asm("d0"), UWORD dest asm("d1"), UBYTE minterm asm("d2"))
 {
     switch (minterm) {
         case 0x00: return 0;
