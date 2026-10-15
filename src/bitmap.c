@@ -1323,9 +1323,10 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
         return;
     }
 
-    // The pattern path updates the complete requested superbitmap rectangle,
-    // including its visible pixels. DoHookClipRects only visits SuperClipRect,
-    // so it cannot replace this traversal without changing those pixels.
+    // Requests spanning clips also update the complete superbitmap rectangle.
+    // A request contained by one clip finishes there, even when that clip is
+    // obscured without backing storage. DoHookClipRects has different traversal
+    // semantics and cannot replace this path.
     // Read the SDK layer/clip structures under their normal semaphore; never
     // modify the layer, its lists or the caller's RastPort while selecting storage.
     struct ExecBase* SysBase = (APTR)graphics->ExecBase;
@@ -1333,8 +1334,9 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
 
     WORD offset_x = layer->bounds.MinX - layer->Scroll_X;
     WORD offset_y = layer->bounds.MinY - layer->Scroll_Y;
-    struct Rectangle screen = {(WORD)(x_min + offset_x), (WORD)(y_min + offset_y),
-        (WORD)(x_max + offset_x), (WORD)(y_max + offset_y)};
+    struct Rectangle screen = {
+        (WORD)(x_min + offset_x), (WORD)(y_min + offset_y), (WORD)(x_max + offset_x), (WORD)(y_max + offset_y)};
+    BOOL complete = FALSE;
 
     for (const struct ClipRect* clip = layer->ClipRect; clip; clip = clip->Next) {
         struct Rectangle selected = screen;
@@ -1354,6 +1356,8 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
             continue;
         }
 
+        complete = selected.MinX == screen.MinX && selected.MinY == screen.MinY && selected.MaxX == screen.MaxX &&
+            selected.MaxY == screen.MaxY;
         BOOL clip_mask = selected.MinX != screen.MinX || selected.MaxX != screen.MaxX;
 
         LONG pattern_x = (WORD)(selected.MinX - offset_x);
@@ -1364,6 +1368,10 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
 
         if (clip->obscured) {
             if (!clip->BitMap) {
+                if (complete) {
+                    break;
+                }
+
                 continue;
             }
 
@@ -1377,9 +1385,13 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
 
         drawPattern(port, dest, (const UWORD*)mask, mask_stride, &selected, pattern_x, pattern_y, mask_x, mask_y,
             clip_mask, graphics);
+
+        if (complete) {
+            break;
+        }
     }
 
-    if (layer->SuperBitMap) {
+    if (!complete && layer->SuperBitMap) {
         drawPattern(
             port, layer->SuperBitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, FALSE, graphics);
     }
