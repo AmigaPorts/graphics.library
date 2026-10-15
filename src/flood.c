@@ -115,16 +115,22 @@ static void directFill(struct Flood* fill, LONG x, LONG y)
     LONG left, right, next_left, next_right;
     findSpan(fill, x, y, &left, &right);
     pushSpan(fill, left, right, y, 1);
-    if (y > 0 && findSpan(fill, left, y - 1, &next_left, &next_right) &&
-        next_left <= right && next_right >= left) {
+    if (y > 0 && findSpan(fill, left, y - 1, &next_left, &next_right) && next_left <= right && next_right >= left) {
         pushSpan(fill, next_left, next_right, y - 1, -1);
-        if (next_left < left || next_right > right) { pushSpan(fill, next_left, next_right, y - 1, 1); }
+
+        if (next_left < left || next_right > right) {
+            pushSpan(fill, next_left, next_right, y - 1, 1);
+        }
+
+        // Both directional searches start on the preceding row, where the
+        // first neighboring span can leave additional disconnected spans.
         if (next_right < right) {
-            scanSpans(fill, next_right, right, y, 1);
+            scanSpans(fill, next_right, right, y - 1, 1);
             scanSpans(fill, next_right, right, y - 1, -1);
         }
+
         if (next_left > left) {
-            scanSpans(fill, left, next_left, y, 1);
+            scanSpans(fill, left, next_left, y - 1, 1);
             scanSpans(fill, left, next_left, y - 1, -1);
         }
     }
