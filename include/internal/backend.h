@@ -13,8 +13,14 @@
 #include <graphics/gfxbase.h>
 
 #if GRAPHICS_CHIPSET
+#include "internal/library.h"
+
 BOOL pcSelectGraphicsBackend(struct GfxBase* graphics);
-BOOL pcUsesChipset(const struct GfxBase* graphics);
+
+static inline BOOL pcUsesChipset(const struct GfxBase* graphics)
+{
+    return ((const struct GraphicsLibrary*)graphics)->chipset_selected;
+}
 #else
 static inline BOOL pcSelectGraphicsBackend(struct GfxBase* graphics)
 {

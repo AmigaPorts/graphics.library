@@ -9,11 +9,6 @@
 #include <proto/exec.h>
 
 #if GRAPHICS_CHIPSET
-BOOL pcUsesChipset(const struct GfxBase* graphics)
-{
-    return ((const struct GraphicsLibrary*)graphics)->chipset_selected;
-}
-
 BOOL pcSelectGraphicsBackend(struct GfxBase* graphics)
 {
     struct GraphicsLibrary* library = (APTR)graphics;
