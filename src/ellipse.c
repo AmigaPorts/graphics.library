@@ -87,10 +87,19 @@ void pcDrawEllipse(struct RastPort* port asm("a1"), WORD center_x asm("d0"), WOR
     }
     if (!one_dot) {
         // Very narrow ellipses can leave a vertical tail after x reaches zero.
-        if (row_drawn) { ++y; }
-        for (; y <= radius_y; ++y) {
-            WORD top = center_y - y, bottom = center_y + y;
-            if (top < bottom) { pixel(port, center_x, top, edge_mask, graphics); }
+        if (row_drawn) {
+            ++y;
+        }
+
+        // The original compares the tail position as a signed WORD. Keep
+        // its wraparound, including the nonterminating radius-32767 case.
+        for (WORD tail_y = y; tail_y <= radius_y; ++tail_y) {
+            WORD top = center_y - tail_y, bottom = center_y + tail_y;
+
+            if (top < bottom) {
+                pixel(port, center_x, top, edge_mask, graphics);
+            }
+
             pixel(port, center_x, bottom, edge_mask, graphics);
         }
     }
