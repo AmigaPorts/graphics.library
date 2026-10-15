@@ -1018,7 +1018,8 @@ void pcBltTemplate(CONST PLANEPTR source asm("a0"), WORD source_x asm("d0"), WOR
 // Pattern and mask coordinates are independent: patterns follow the layer's
 // logical origin; the stencil follows the caller's requested rectangle.
 static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask, UWORD mask_stride,
-    const struct Rectangle* bounds, LONG pattern_x, LONG pattern_y, LONG mask_x, LONG mask_y, struct GfxBase* graphics)
+    const struct Rectangle* bounds, LONG pattern_x, LONG pattern_y, LONG mask_x, LONG mask_y, BOOL clip_mask,
+    struct GfxBase* graphics)
 {
     if (bounds->MaxX < bounds->MinX || bounds->MaxY < bounds->MinY) {
         return;
@@ -1043,8 +1044,9 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
 
     // A direct stencil supplies complete words, including its padding. The
     // original masks its last fetched word according to the supplied pitch;
-    // clipped stencils have separate edge handling and must not use this rule.
-    BOOL direct_mask = mask && !port->Layer;
+    // horizontal clipping has separate edge handling. A layer alone does not
+    // select that path, and neither does clipping only the vertical bounds.
+    BOOL direct_mask = mask && !clip_mask;
     ULONG mask_words = (bounds->MaxX >> 4) - (bounds->MinX >> 4) + 1;
     ULONG row_step = direct_mask ? pattern_rows : 1;
     ULONG phases = row_step < height ? row_step : height;
@@ -1061,21 +1063,25 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
         mask_step = (WORD)(mask_stride * row_step - mask_words * 2) + mask_words * 2;
     }
 
+    const UWORD* next_pattern = port->AreaPtrn;
+
     for (unsigned plane = 0; plane < dest->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
             continue;
+        }
+
+        // Per-plane patterns follow the enabled planes, including a plane
+        // whose minterm leaves its destination unchanged.
+        const UWORD* pattern = next_pattern;
+
+        if (pattern && port->AreaPtSz < 0) {
+            next_pattern += pattern_rows;
         }
 
         UBYTE minterm = port->minterms[plane] & 0xf0;
 
         if (minterm == 0xa0) {
             continue;
-        }
-
-        const UWORD* pattern = port->AreaPtrn;
-
-        if (pattern && port->AreaPtSz < 0) {
-            pattern += plane * pattern_rows;
         }
 
         for (ULONG phase = 0; phase < phases; ++phase) {
@@ -1152,7 +1158,8 @@ static ULONG fillRegion(struct Hook* hook asm("a0"), const struct FillMessage* m
 {
     struct GfxBase* graphics = hook->h_Data;
 
-    drawPattern(port, port->BitMap, NULL, 0, &message->bounds, message->offset_x, message->offset_y, 0, 0, graphics);
+    drawPattern(
+        port, port->BitMap, NULL, 0, &message->bounds, message->offset_x, message->offset_y, 0, 0, FALSE, graphics);
 
     return 0;
 }
@@ -1169,7 +1176,7 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
     struct Layer* layer = port->Layer;
 
     if (!layer) {
-        drawPattern(port, port->BitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, graphics);
+        drawPattern(port, port->BitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, FALSE, graphics);
 
         return;
     }
@@ -1217,6 +1224,8 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
             continue;
         }
 
+        BOOL clip_mask = selected.MinX != screen.MinX || selected.MaxX != screen.MaxX;
+
         LONG pattern_x = (WORD)(selected.MinX - offset_x);
         LONG pattern_y = (WORD)(selected.MinY - offset_y);
         LONG mask_x = (WORD)(selected.MinX - screen.MinX);
@@ -1236,11 +1245,13 @@ void pcBltPattern(struct RastPort* port asm("a1"), CONST PLANEPTR mask asm("a0")
             selected.MaxY -= clip->bounds.MinY;
         }
 
-        drawPattern(port, dest, (const UWORD*)mask, mask_stride, &selected, pattern_x, pattern_y, mask_x, mask_y, graphics);
+        drawPattern(port, dest, (const UWORD*)mask, mask_stride, &selected, pattern_x, pattern_y, mask_x, mask_y,
+            clip_mask, graphics);
     }
 
     if (layer->SuperBitMap) {
-        drawPattern(port, layer->SuperBitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, graphics);
+        drawPattern(
+            port, layer->SuperBitMap, (const UWORD*)mask, mask_stride, &bounds, x_min, y_min, 0, 0, FALSE, graphics);
     }
 
     ReleaseSemaphore(&layer->Lock);
