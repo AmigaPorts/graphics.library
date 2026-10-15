@@ -189,14 +189,12 @@ static void restrictPalette(struct CopList* list, struct GfxBase* graphics)
         if (input->OpCode == COPPER_MOVE) {
             if (input->DESTADDR == 0x106) {
                 low = (input->DESTDATA & 0xe200) != 0;
-
-                if (low || !(graphics->ChipRevBits0 & GFXF_HR_DENISE)) {
-                    continue;
-                }
+                // Palette-bank selection is AGA-only. ECS display controls
+                // are emitted with the display-window setup below.
+                continue;
             }
 
-            if (input->DESTADDR == 0x10c ||
-                (low && input->DESTADDR >= 0x180 && input->DESTADDR <= 0x1be)) {
+            if (input->DESTADDR == 0x10c || (low && input->DESTADDR >= 0x180 && input->DESTADDR <= 0x1be)) {
                 continue;
             }
         }
@@ -508,16 +506,24 @@ ULONG pcBuildChipsetViewPortList(
     UWORD control = bitplaneControl(depth, state, display_control, graphics);
     UWORD priority = 0x24 | (state->modes & PFBA ? 0x40 : 0);
 
+    // AGA disables extra-half-brite decoding in every other display mode.
+    if ((graphics->ChipRevBits0 & GFXF_AA_LISA) && !(state->modes & EXTRA_HALFBRITE)) {
+        priority |= 0x0200;
+    }
+
     struct CopList* list = viewport->DspIns;
     restrictPalette(list, graphics);
     struct CopIns* instruction = list->CopIns + list->Count;
     instruction = move(instruction, 0, 0x8e, (start_y << 8) | (start_x & 255));
 
-    if (!extended) {
-        // The preceding OCS viewport can still be fetching during this setup.
-        // Disable its bitplanes before the later display-window end write.
-        instruction = move(instruction, 0, 0x100, control & 0x0fef);
-        instruction = move(instruction, 0, 0x104, priority);
+    // The preceding viewport can still be fetching during this setup.
+    // Select the new bitplane controls before the display-window end write;
+    // OCS keeps its planes disabled until the viewport's start wait.
+    instruction = move(instruction, 0, 0x100, extended ? control : control & 0x0fef);
+    instruction = move(instruction, 0, 0x104, priority);
+
+    if (extended) {
+        instruction = move(instruction, 0, 0x106, display_control);
     }
 
     // An odd ECS display end includes one more raster line in the long field.
@@ -529,21 +535,11 @@ ULONG pcBuildChipsetViewPortList(
         instruction = move(instruction, 0, 0x90, (stop_y << 8) | (stop_x & 255));
     }
 
-    if (extended) {
-        instruction = move(instruction, 0, 0x100, control);
-        instruction = move(instruction, 0, 0x104, priority);
-        instruction = move(instruction, 0, 0x106, display_control);
-    }
-
     instruction = move(instruction, 0, 0x92, raster.fetch_start);
     instruction = move(instruction, 0, 0x94, raster.fetch_stop);
     instruction = move(instruction, 0, 0x102, raster.scroll);
     instruction = move(instruction, 0, 0x108, raster.modulo[0]);
     instruction = move(instruction, 0, 0x10a, raster.modulo[1]);
-
-    if (graphics->ChipRevBits0 & GFXF_AA_ALICE) {
-        instruction = move(instruction, 0, 0x1fc, raster.fetch_mode);
-    }
 
     for (unsigned plane = 0; plane < depth; ++plane) {
         ULONG address = raster.planes[plane];
@@ -570,6 +566,10 @@ ULONG pcBuildChipsetViewPortList(
         } else {
             instruction = move(instruction, 0, 0x1e4, high);
         }
+    }
+
+    if (graphics->ChipRevBits0 & GFXF_AA_ALICE) {
+        instruction = move(instruction, 0, 0x1fc, raster.fetch_mode);
     }
 
     list->Count = instruction - list->CopIns;
