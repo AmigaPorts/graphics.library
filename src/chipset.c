@@ -373,21 +373,21 @@ static ULONG completeBlitter(struct ChipsetGraphicsDisplay* chipset asm("a1"))
     return 0;
 }
 
-static ULONG chipsetFrame(struct ChipsetGraphicsDisplay* chipset asm("a1"))
+static ULONG chipsetFrame(struct GfxBase* graphics asm("a1"))
 {
     // A queued beam dependency belongs to the frame in which it was added.
     // Once that frame ends, retain the requested row but expire its wait,
     // including requests still blocked behind another blitter owner.
-    for (struct bltnode* node = chipset->graphics->blthd; node; node = node->n) {
+    for (struct bltnode* node = graphics->blthd; node; node = node->n) {
         node->beamsync &= 0x7fff;
     }
 
-    if (pcActiveViewFields(chipset->graphics)->owned) {
-        programFrame(chipset->graphics);
-        selectField(chipset->graphics);
+    if (pcActiveViewFields(graphics)->owned) {
+        programFrame(graphics);
+        selectField(graphics);
     }
 
-    return pcGraphicsFrame(chipset->graphics);
+    return pcGraphicsFrame(graphics);
 }
 
 BOOL pcOpenChipsetDisplay(struct GfxBase* graphics)
@@ -406,10 +406,15 @@ BOOL pcOpenChipsetDisplay(struct GfxBase* graphics)
     }
 
     chipset->graphics = graphics;
-    chipset->frame.is_Node.ln_Type = NT_INTERRUPT;
-    chipset->frame.is_Node.ln_Name = "graphics.library chipset frame";
-    chipset->frame.is_Data = chipset;
-    chipset->frame.is_Code = (APTR)chipsetFrame;
+
+    // Keep the original public server and priority: clients may replace its
+    // callback, and lower-priority VBlank servers observe completed graphics work.
+    graphics->vbsrv.is_Node.ln_Type = NT_UNKNOWN;
+    graphics->vbsrv.is_Node.ln_Pri = 10;
+    graphics->vbsrv.is_Node.ln_Name = GRAPHICSNAME;
+    graphics->vbsrv.is_Data = graphics;
+    graphics->vbsrv.is_Code = (APTR)chipsetFrame;
+
     chipset->blitter.is_Node.ln_Type = NT_INTERRUPT;
     chipset->blitter.is_Node.ln_Name = "graphics.library blitter";
     chipset->blitter.is_Data = chipset;
@@ -427,7 +432,7 @@ BOOL pcOpenChipsetDisplay(struct GfxBase* graphics)
     custom->intreq = INTF_BLIT;
     custom->intena = INTF_SETCLR | INTF_BLIT;
     custom->dmacon = DMAF_SETCLR | DMAF_MASTER | DMAF_BLITTER;
-    AddIntServer(INTB_VERTB, &chipset->frame);
+    AddIntServer(INTB_VERTB, &graphics->vbsrv);
     Enable();
 
     return TRUE;
@@ -449,7 +454,7 @@ BOOL pcCloseChipsetDisplay(struct GfxBase* graphics)
     struct ExecBase* SysBase = (APTR)graphics->ExecBase;
     Disable();
     custom->intena = INTF_BLIT;
-    RemIntServer(INTB_VERTB, &chipset->frame);
+    RemIntServer(INTB_VERTB, &graphics->vbsrv);
     SetIntVector(INTB_BLIT, chipset->previous_blitter);
     custom->intena = INTF_SETCLR | (chipset->saved_interrupts & INTF_BLIT);
     custom->dmacon = DMAF_BLITTER & ~chipset->saved_dma;

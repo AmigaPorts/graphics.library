@@ -6,7 +6,6 @@
 #include <graphics/monitor.h>
 
 struct ChipsetGraphicsDisplay {
-    struct Interrupt frame;
     struct Interrupt blitter;
     struct Interrupt* previous_blitter;
     struct GfxBase* graphics;
