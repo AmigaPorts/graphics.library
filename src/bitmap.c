@@ -128,7 +128,7 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
 // Read the next output's source and destination before storing the current
 // output, including across row boundaries where the rasters can overlap.
 static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x, ULONG width, ULONG height,
-    LONG source_step, LONG dest_step, UBYTE minterm, BOOL backward)
+    LONG source_step, LONG dest_step, UBYTE minterm, BOOL backward, BOOL extra_word)
 {
     UWORD* pending = NULL;
     UWORD pending_bits = 0;
@@ -138,8 +138,27 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
         const UWORD* saved_source = NULL;
         UWORD saved_bits = 0;
         ULONG remaining = width;
+        BOOL extra = extra_word;
 
-        while (remaining) {
+        while (remaining || extra) {
+            // A shifted template can span one more source word than its
+            // destination. Its masked-off output still participates in the
+            // read/write ordering when adjacent destination rows overlap.
+            if (extra && (backward || !remaining)) {
+                UWORD* word = dest + ((dest_x + width - 1) >> 4) + 1;
+                UWORD old = *word;
+
+                if (pending) {
+                    *pending = pending_bits;
+                }
+
+                pending = word;
+                pending_bits = old;
+                extra = FALSE;
+
+                continue;
+            }
+
             unsigned count;
             ULONG offset;
 
@@ -329,7 +348,7 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
 
         if (read_ahead) {
             copyAliasedRows((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, height, source_step,
-                dest_step, minterm, reverse_words);
+                dest_step, minterm, reverse_words, FALSE);
 
             continue;
         }
@@ -957,7 +976,14 @@ static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
         ULONG dest_start = (ULONG)output + (dest_x >> 4) * 2;
         ULONG dest_end = (ULONG)output + (ULONG)(height - 1) * dest->BytesPerRow + ((dest_x + width - 1) >> 4) * 2;
 
-        if (source_start <= dest_end && dest_start <= source_end) {
+        // Destination rows can share words even with a separate stencil.
+        // Preserve their traversal and destination read order as for aliases.
+        ULONG dest_words = (((dest_x & 15) + width - 1) >> 4) + 1;
+        ULONG source_words = ((source_x + width - 1) >> 4) + 1;
+        ULONG copy_words = source_words > dest_words ? source_words : dest_words;
+        BOOL shared_rows = height > 1 && copy_words * 2 > dest->BytesPerRow;
+
+        if ((source_start <= dest_end && dest_start <= source_end) || shared_rows) {
             LONG source_step = source_stride;
             LONG dest_step = dest->BytesPerRow;
 
@@ -969,7 +995,7 @@ static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
             }
 
             copyAliasedRows((const UWORD*)input, (UWORD*)output, source_x, dest_x, width, height, source_step,
-                dest_step, minterm, reverse_words);
+                dest_step, minterm, reverse_words, shared_rows && source_words > dest_words);
 
             continue;
         }
