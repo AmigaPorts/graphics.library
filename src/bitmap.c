@@ -1029,6 +1029,31 @@ void pcBltTemplate(CONST PLANEPTR source asm("a0"), WORD source_x asm("d0"), WOR
     DoHookClipRects(&hook, port, &bounds);
 }
 
+static UWORD* preparePatternMask(
+    const UWORD* mask, UWORD stride, WORD x, WORD width, WORD rows, ULONG* size, struct GfxBase* graphics)
+{
+    *size = (LONG)(WORD)stride * rows;
+    UWORD* prepared = pcAllocScratch(graphics, *size, MEMF_CHIP);
+
+    if (!prepared) {
+        return NULL;
+    }
+
+    BltClear((PLANEPTR)prepared, *size, 0);
+
+    // Both descriptors use InitBitMap's WORD width rounding. The later mask
+    // traversal still uses the caller's pitch, rather than this rounded value.
+    struct BitMap source;
+    struct BitMap dest;
+    InitBitMap(&source, 1, (UWORD)(stride << 3), rows);
+    InitBitMap(&dest, 1, (UWORD)(stride << 3), rows);
+    source.Planes[0] = (PLANEPTR)mask;
+    dest.Planes[0] = (PLANEPTR)prepared;
+    BltBitMap(&source, x, 0, &dest, x, 0, width, rows, 0xca, 1, NULL);
+
+    return prepared;
+}
+
 // Pattern and mask coordinates are independent: patterns follow the layer's
 // logical origin; the stencil follows the caller's requested rectangle.
 static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask, UWORD mask_stride,
@@ -1039,16 +1064,7 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
         return;
     }
 
-    // Both the solid and patterned original paths own each clipped rectangle,
-    // even when its plane mask is empty. Wait before reading the pattern or
-    // stencil as those can also be destinations of an earlier DMA transfer.
     BOOL chipset = pcUsesChipset(graphics);
-
-    if (chipset) {
-        pcOwnBlitter(graphics);
-        pcWaitBlit(graphics);
-    }
-
     ULONG width = (LONG)bounds->MaxX - bounds->MinX + 1;
     ULONG height = (LONG)bounds->MaxY - bounds->MinY + 1;
 
@@ -1062,7 +1078,44 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
     // select that path, and neither does clipping only the vertical bounds.
     BOOL direct_mask = mask && !clip_mask;
     ULONG mask_words = (bounds->MaxX >> 4) - (bounds->MinX >> 4) + 1;
-    ULONG row_step = direct_mask ? pattern_rows : 1;
+    ULONG prepared_size = 0;
+    UWORD* prepared = NULL;
+    LONG mask_shift = (bounds->MinX & 15) - (mask_x & 15);
+
+    if (mask && clip_mask) {
+        ULONG source_words = (((mask_x & 15) + width - 1) >> 4) + 1;
+        ULONG copy_words = source_words > mask_words ? source_words : mask_words;
+        BOOL prepare = mask_shift < 0;
+
+        if (copy_words * 2 == mask_stride) {
+            prepare |= width < mask_stride * 8UL;
+        } else {
+            prepare |= mask_stride != 2;
+        }
+
+        if (prepare) {
+            prepared = preparePatternMask(mask, mask_stride, mask_x, width, mask_y + height, &prepared_size, graphics);
+
+            if (!prepared) {
+                return;
+            }
+
+            mask = prepared;
+            mask_words = copy_words;
+        }
+    }
+
+    // Preparation may call the public bitmap vectors, which take ownership
+    // themselves. Acquire for drawing only after that transfer has been issued.
+    // Even an empty plane mask retains this ownership/wait boundary.
+    if (chipset) {
+        pcOwnBlitter(graphics);
+        pcWaitBlit(graphics);
+    }
+
+    BOOL reverse_mask = prepared && mask_shift < 0;
+    BOOL word_mask = direct_mask || prepared;
+    ULONG row_step = word_mask ? pattern_rows : 1;
     ULONG phases = row_step < height ? row_step : height;
     UWORD last_mask = 0;
     LONG mask_step = mask_stride;
@@ -1075,6 +1128,10 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
         // Each pattern phase starts at an unsigned row offset, then repeats
         // through the original signed-WORD row displacement.
         mask_step = (WORD)(mask_stride * row_step - mask_words * 2) + mask_words * 2;
+    } else if (prepared) {
+        last_mask = reverse_mask || mask_stride >= mask_words * 2 ? 0xffff : 0;
+        mask_step = reverse_mask ? -(WORD)(-mask_stride * row_step - mask_words * 2) - mask_words * 2
+                                 : (WORD)(mask_stride * row_step - mask_words * 2) + mask_words * 2;
     }
 
     const UWORD* next_pattern = port->AreaPtrn;
@@ -1106,10 +1163,14 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
             if (input) {
                 // Vertical clipping uses a signed pitch before the unsigned
                 // pattern-phase offset is added to the direct stencil.
-                LONG clip_stride = direct_mask ? (WORD)mask_stride : (LONG)mask_stride;
+                LONG clip_stride = word_mask ? (WORD)mask_stride : (LONG)mask_stride;
 
                 input += mask_y * clip_stride;
                 input += phase * mask_stride;
+
+                if (prepared) {
+                    input += (mask_x >> 4) * 2;
+                }
             }
 
             for (ULONG y = phase; y < height; y += row_step) {
@@ -1119,9 +1180,14 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
                     bits = (bits >> rotation) | (bits << (16 - rotation));
                 }
 
-                ULONG remaining = direct_mask ? mask_words * 16 : width;
-                LONG x = direct_mask ? bounds->MinX & ~15 : bounds->MinX;
+                ULONG remaining = word_mask ? mask_words * 16 : width;
+                LONG x = word_mask ? bounds->MinX & ~15 : bounds->MinX;
                 const UWORD* stencil = (const UWORD*)input;
+
+                if (reverse_mask) {
+                    x += (mask_words - 1) * 16;
+                    stencil += mask_words;
+                }
 
                 while (remaining) {
                     unsigned shift = x & 15;
@@ -1133,7 +1199,22 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
 
                     UWORD selected = (0xffffUL >> (16 - count)) << (16 - shift - count);
 
-                    if (direct_mask) {
+                    if (prepared) {
+                        UWORD next = reverse_mask ? *--stencil : *stencil++;
+
+                        if (remaining == 16) {
+                            next &= last_mask;
+                        }
+
+                        if (reverse_mask) {
+                            unsigned offset = -mask_shift;
+                            selected = (next << offset) | (carry >> (16 - offset));
+                        } else {
+                            selected = mask_shift ? (carry << (16 - mask_shift)) | (next >> mask_shift) : next;
+                        }
+
+                        carry = next;
+                    } else if (direct_mask) {
                         UWORD next = *stencil++;
                         unsigned offset = bounds->MinX & 15;
 
@@ -1152,7 +1233,7 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
                     UWORD* word = (UWORD*)output + (x >> 4);
                     UWORD old = *word;
                     *word = (old & ~selected) | (combine(bits, old, minterm) & selected);
-                    x += count;
+                    x += reverse_mask ? -(LONG)count : (LONG)count;
                     remaining -= count;
                 }
 
@@ -1169,6 +1250,10 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
 
     if (chipset) {
         pcDisownBlitter(graphics);
+    }
+
+    if (prepared) {
+        pcFreeScratch(graphics, prepared, prepared_size);
     }
 }
 
