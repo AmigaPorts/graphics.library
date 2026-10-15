@@ -254,19 +254,28 @@ LONG pcWritePixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
 
         LONG offset = (LONG)y * (WORD)map->BytesPerRow + (x >> 3);
         UBYTE bit = 0x80U >> (x & 7);
+        UBYTE mask = port->Mask;
+        UWORD depth = map->Depth;
 
-        for (unsigned plane = 0; plane < map->Depth; ++plane) {
-            if (!(port->Mask & (1U << plane))) {
+        for (UWORD plane = 0; plane < depth; ++plane, mask >>= 1) {
+            if (!(mask & 1)) {
                 continue;
             }
 
             UBYTE* dest = map->Planes[plane] + offset;
 
             switch (port->minterms[plane] >> 6) {
-                case 0: *dest &= ~bit; break;
-                case 1: *dest ^= bit; break;
-                case 2: break;
-                case 3: *dest |= bit; break;
+                case 0:
+                    *dest &= ~bit;
+                    break;
+                case 1:
+                    *dest ^= bit;
+                    break;
+                case 2:
+                    break;
+                case 3:
+                    *dest |= bit;
+                    break;
             }
         }
 
