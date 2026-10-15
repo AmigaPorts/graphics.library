@@ -1514,6 +1514,37 @@ static void scaleCopyRows(const UWORD* source, UWORD* dest, UWORD source_x, UWOR
         return;
     }
 
+    ULONG source_first = (ULONG)source + (source_x >> 4) * 2;
+    ULONG source_last = source_first + (copies - 1) * source_step;
+    ULONG dest_first = (ULONG)dest + (dest_x >> 4) * 2;
+    ULONG dest_last = dest_first + (copies - 1) * dest_step;
+
+    if (source_step < 0) {
+        ULONG swap = source_first;
+
+        source_first = source_last;
+        source_last = swap;
+    }
+
+    if (dest_step < 0) {
+        ULONG swap = dest_first;
+
+        dest_first = dest_last;
+        dest_last = swap;
+    }
+
+    source_last += (((source_x & 15) + copied_width - 1) >> 4) * 2;
+    dest_last += (columns - 1) * 2;
+
+    // Duplicated rows can overlap the row being read back. Keep the next
+    // source and destination reads ahead of the preceding output write.
+    if (source_first <= dest_last && dest_first <= source_last) {
+        copyAliasedRows(
+            source, dest, source_x, dest_x, copied_width, copies, source_step, dest_step, 0xc0, FALSE, FALSE);
+
+        return;
+    }
+
     for (unsigned row = 0; row < copies; ++row) {
         copyRow(source, dest, source_x, dest_x, copied_width, 0xc0, 0);
         source = (const UWORD*)((const UBYTE*)source + source_step);
