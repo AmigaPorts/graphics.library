@@ -83,6 +83,8 @@ void pcInitChipsetRevision(struct GfxBase* graphics)
     // enabled. Keep this hardware capability independent of SetChipRev.
     if (!(identification & 0x2000)) {
         graphics->DisplayFlags |= LPEN_SWAP_FRAMES;
+    } else if (!(identification & 0x1000)) {
+        graphics->DisplayFlags |= REALLY_PAL;
     }
 
     // Original startup reports ECS-compatible operation even on AA hardware.
