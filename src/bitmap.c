@@ -125,14 +125,14 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
 }
 
 // Overlapping rasters retain the traversal selected for the complete operation.
-// Read the next output's source before storing the current output, including
-// across row boundaries where unequal pitches can make the rows overlap.
+// Read the next output's source and destination before storing the current
+// output, including across row boundaries where the rasters can overlap.
 static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x, ULONG width, ULONG height,
     LONG source_step, LONG dest_step, UBYTE minterm, BOOL backward)
 {
     UWORD* pending = NULL;
     UWORD pending_bits = 0;
-    UWORD pending_mask = 0;
+    BOOL constant = !source || (ULONG)source == 0xffffffff;
 
     for (ULONG row = 0; row < height; ++row) {
         const UWORD* saved_source = NULL;
@@ -160,46 +160,51 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                 }
             }
 
-            const UWORD* input = source + ((source_x + offset) >> 4);
-            unsigned source_shift = (source_x + offset) & 15;
-            UWORD first = input == saved_source ? saved_bits : *input;
-            UWORD bits = first << source_shift;
+            UWORD bits = source ? 0xffff : 0;
 
-            if (source_shift + count > 16) {
-                UWORD second = input + 1 == saved_source ? saved_bits : input[1];
+            if (!constant) {
+                const UWORD* input = source + ((source_x + offset) >> 4);
+                unsigned source_shift = (source_x + offset) & 15;
+                UWORD first = input == saved_source ? saved_bits : *input;
+                bits = first << source_shift;
 
-                bits |= second >> (16 - source_shift);
-                saved_source = backward ? input : input + 1;
-                saved_bits = backward ? first : second;
-            } else {
-                saved_source = input;
-                saved_bits = first;
-            }
+                if (source_shift + count > 16) {
+                    UWORD second = input + 1 == saved_source ? saved_bits : input[1];
 
-            if (pending) {
-                UWORD old = *pending;
-
-                *pending = (old & ~pending_mask) | (combine(pending_bits, old, minterm) & pending_mask);
+                    bits |= second >> (16 - source_shift);
+                    saved_source = backward ? input : input + 1;
+                    saved_bits = backward ? first : second;
+                } else {
+                    saved_source = input;
+                    saved_bits = first;
+                }
             }
 
             unsigned shift = (dest_x + offset) & 15;
+            UWORD* word = dest + ((dest_x + offset) >> 4);
+            UWORD old = *word;
+            UWORD mask = (0xffffUL >> (16 - count)) << (16 - shift - count);
 
-            pending = dest + ((dest_x + offset) >> 4);
-            pending_mask = (0xffffUL >> (16 - count)) << (16 - shift - count);
-            pending_bits = bits >> shift;
+            if (pending) {
+                *pending = pending_bits;
+            }
+
+            pending = word;
+            pending_bits = (old & ~mask) | (combine(bits >> shift, old, minterm) & mask);
             remaining -= count;
         }
 
         if (row + 1 < height) {
-            source = (const UWORD*)((const UBYTE*)source + source_step);
+            if (!constant) {
+                source = (const UWORD*)((const UBYTE*)source + source_step);
+            }
+
             dest = (UWORD*)((UBYTE*)dest + dest_step);
         }
     }
 
     if (pending) {
-        UWORD old = *pending;
-
-        *pending = (old & ~pending_mask) | (combine(pending_bits, old, minterm) & pending_mask);
+        *pending = pending_bits;
     }
 }
 
@@ -240,6 +245,7 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
 
         // Overlap setup searches from the highest selected plane. A horizontal
         // overlap may still traverse rows forward while copying words backward.
+        // Address ordering is signed, including the all-ones source sentinel.
         ULONG input = (ULONG)source->Planes[plane - 1] + (ULONG)source_y * source->BytesPerRow +
             (source_x >> 4) * 2;
         ULONG output = (ULONG)dest->Planes[plane - 1] + (ULONG)dest_y * dest->BytesPerRow +
@@ -248,15 +254,15 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
         if (source->BytesPerRow != dest->BytesPerRow) {
             reverse_rows = (dest_x & 15) >= (source_x & 15);
             reverse_words = !reverse_rows;
-        } else if (output >= input) {
+        } else if ((LONG)output >= (LONG)input) {
             ULONG last_word = input + (((source_x & 15) + width - 1) >> 4) * 2;
 
-            reverse_rows = (dest_x & 15) <= (source_x & 15) || output > last_word;
-            reverse_words = (dest_x & 15) <= (source_x & 15) || output <= last_word;
+            reverse_rows = (dest_x & 15) <= (source_x & 15) || (LONG)output > (LONG)last_word;
+            reverse_words = (dest_x & 15) <= (source_x & 15) || (LONG)output <= (LONG)last_word;
         } else {
             ULONG last_word = output + (((dest_x & 15) + width - 1) >> 4) * 2;
 
-            reverse_words = (dest_x & 15) < (source_x & 15) && last_word < input;
+            reverse_words = (dest_x & 15) < (source_x & 15) && (LONG)last_word < (LONG)input;
         }
 
         break;
@@ -301,6 +307,14 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
             last_dest += (height - 1) * dest_step;
 
             read_ahead = first_source <= last_dest && first_dest <= last_source;
+        }
+
+        // Narrow declared rows can share destination words even when the
+        // source is separate or constant. Preserve the destination read order.
+        ULONG dest_words = (((dest_x & 15) + width - 1) >> 4) + 1;
+
+        if (height > 1 && dest_words * 2 > dest->BytesPerRow) {
+            read_ahead = TRUE;
         }
 
         if (reverse_rows) {
