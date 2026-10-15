@@ -1080,6 +1080,35 @@ static UWORD* preparePatternMask(
     return prepared;
 }
 
+// Without a stencil, each row has one Boolean operation for every word.
+// Fold the pattern/minterm once, then apply only the two edge masks separately.
+static void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD bits, UBYTE minterm)
+{
+    UWORD toggle = combine(bits, 0, minterm);
+    UWORD keep = toggle ^ combine(bits, 0xffff, minterm);
+    UWORD first = 0xffffU >> (x & 15);
+    UWORD last = 0xffffU << ((-(x + width)) & 15);
+    ULONG words = ((x & 15) + width + 15) >> 4;
+    UWORD* output = row + (x >> 4);
+
+    if (words == 1) {
+        first &= last;
+        *output = (*output & (~first | keep)) ^ (toggle & first);
+
+        return;
+    }
+
+    *output = (*output & (~first | keep)) ^ (toggle & first);
+    ++output;
+
+    for (ULONG word = 2; word < words; ++word) {
+        *output = (*output & keep) ^ toggle;
+        ++output;
+    }
+
+    *output = (*output & (~last | keep)) ^ (toggle & last);
+}
+
 // Pattern and mask coordinates are independent: patterns follow the layer's
 // logical origin; the stencil follows the caller's requested rectangle.
 static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask, UWORD mask_stride,
@@ -1209,6 +1238,11 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
                 ULONG remaining = word_mask ? mask_words * 16 : width;
                 LONG x = word_mask ? bounds->MinX & ~15 : bounds->MinX;
                 const UWORD* stencil = (const UWORD*)input;
+
+                if (!mask) {
+                    fillPatternRow((UWORD*)output, x, width, bits, minterm);
+                    remaining = 0;
+                }
 
                 if (reverse_mask) {
                     x += (mask_words - 1) * 16;
