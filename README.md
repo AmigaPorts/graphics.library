@@ -47,10 +47,10 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| ReadPixel, unlayered | 1.00 | **1.52** | 1.72 |
-| WritePixel, unlayered | 1.00 | **1.73** | 1.90 |
-| ReadPixel, layered | 1.00 | **1.42** | 1.50 |
-| WritePixel, layered | 1.00 | **1.53** | 1.62 |
+| ReadPixel, unlayered | 1.00 | **1.45** | 1.52 |
+| WritePixel, unlayered | 1.00 | 1.73 | 1.73 |
+| ReadPixel, layered | 1.00 | **1.39** | 1.42 |
+| WritePixel, layered | 1.00 | 1.53 | 1.53 |
 
 These focused timings are separate from the earlier SysSpeed baseline below.
 
