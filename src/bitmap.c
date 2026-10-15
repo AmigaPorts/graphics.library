@@ -1090,7 +1090,12 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
             UWORD carry = 0;
 
             if (input) {
-                input += (mask_y + phase) * mask_stride;
+                // Vertical clipping uses a signed pitch before the unsigned
+                // pattern-phase offset is added to the direct stencil.
+                LONG clip_stride = direct_mask ? (WORD)mask_stride : (LONG)mask_stride;
+
+                input += mask_y * clip_stride;
+                input += phase * mask_stride;
             }
 
             for (ULONG y = phase; y < height; y += row_step) {
