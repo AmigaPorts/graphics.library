@@ -446,6 +446,11 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
     LONG stop_x = state->stop_x >> mode->horizontal_shift;
     LONG start_y = state->start_y >> state->interlaced;
     LONG stop_y = state->stop_y >> state->interlaced;
+    LONG long_stop_y = stop_y;
+
+    if (graphics->ChipRevBits0 & GFXF_HR_DENISE) {
+        long_stop_y = (state->stop_y + state->interlaced) >> state->interlaced;
+    }
 
     UWORD control = (depth & 7) << 12;
     control |= depth == 8 ? 0x10 : 0;
@@ -468,7 +473,16 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
     restrictPalette(list, graphics);
     struct CopIns* instruction = list->CopIns + list->Count;
     instruction = move(instruction, 0, 0x8e, (start_y << 8) | (start_x & 255));
-    instruction = move(instruction, 0, 0x90, (stop_y << 8) | (stop_x & 255));
+
+    // An odd ECS display end includes one more raster line in the long field.
+    // Preserve that distinction in both halves of the display-window end.
+    if (long_stop_y != stop_y) {
+        instruction = move(instruction, CPR_NT_SHT, 0x90, (stop_y << 8) | (stop_x & 255));
+        instruction = move(instruction, CPR_NT_LOF, 0x90, (long_stop_y << 8) | (stop_x & 255));
+    } else {
+        instruction = move(instruction, 0, 0x90, (stop_y << 8) | (stop_x & 255));
+    }
+
     instruction = move(instruction, 0, 0x100, control);
     instruction = move(instruction, 0, 0x104, 0x24 | (state->modes & PFBA ? 0x40 : 0));
     if (graphics->ChipRevBits0 & GFXF_HR_DENISE) {
@@ -497,7 +511,14 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
         UWORD high = ((start_y >> 8) & 7) | (((stop_y >> 8) & 7) << 8);
         high |= ((start_x >> 8) & 1) << 5;
         high |= ((stop_x >> 8) & 1) << 13;
-        instruction = move(instruction, 0, 0x1e4, high);
+        UWORD long_high = (high & ~0x0700) | (((long_stop_y >> 8) & 7) << 8);
+
+        if (long_high != high) {
+            instruction = move(instruction, CPR_NT_LOF, 0x1e4, long_high);
+            instruction = move(instruction, CPR_NT_SHT, 0x1e4, high);
+        } else {
+            instruction = move(instruction, 0, 0x1e4, high);
+        }
     }
 
     list->Count = instruction - list->CopIns;
