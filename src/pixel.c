@@ -211,9 +211,11 @@ ULONG pcReadPixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
         UBYTE bit = 0x80U >> (x & 7);
         result = 0;
 
-        for (unsigned plane = 0; plane < map->Depth; ++plane) {
-            if (map->Planes[plane][offset] & bit) {
-                result |= 1UL << plane;
+        for (UWORD plane = map->Depth; plane > 0; --plane) {
+            result = (ULONG)result << 1;
+
+            if (map->Planes[plane - 1][offset] & bit) {
+                result = (ULONG)result + 1;
             }
         }
     }
