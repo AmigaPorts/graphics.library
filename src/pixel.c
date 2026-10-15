@@ -160,7 +160,8 @@ static BOOL contains(const struct Rectangle* bounds, WORD x, WORD y)
     return x >= bounds->MinX && x <= bounds->MaxX && y >= bounds->MinY && y <= bounds->MaxY;
 }
 
-static struct BitMap* pixelStorage(const struct RastPort* port, WORD* x, WORD* y)
+static struct BitMap* pixelStorage(
+    const struct RastPort* port asm("a0"), WORD* x asm("a1"), WORD* y asm("a2"))
 {
     const struct Layer* layer = port->Layer;
     if (!layer) { return port->BitMap; }
