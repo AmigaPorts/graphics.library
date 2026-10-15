@@ -506,11 +506,19 @@ ULONG pcBuildChipsetViewPortList(
     UWORD display_control, sprite_control;
     pcReadViewPortListControls(&display_control, &sprite_control, viewport->ColorMap, graphics);
     UWORD control = bitplaneControl(depth, state, display_control, graphics);
+    UWORD priority = 0x24 | (state->modes & PFBA ? 0x40 : 0);
 
     struct CopList* list = viewport->DspIns;
     restrictPalette(list, graphics);
     struct CopIns* instruction = list->CopIns + list->Count;
     instruction = move(instruction, 0, 0x8e, (start_y << 8) | (start_x & 255));
+
+    if (!extended) {
+        // The preceding OCS viewport can still be fetching during this setup.
+        // Disable its bitplanes before the later display-window end write.
+        instruction = move(instruction, 0, 0x100, control & 0x0fef);
+        instruction = move(instruction, 0, 0x104, priority);
+    }
 
     // An odd ECS display end includes one more raster line in the long field.
     // Preserve that distinction in both halves of the display-window end.
@@ -521,11 +529,12 @@ ULONG pcBuildChipsetViewPortList(
         instruction = move(instruction, 0, 0x90, (stop_y << 8) | (stop_x & 255));
     }
 
-    instruction = move(instruction, 0, 0x100, extended ? control : control & 0x0fef);
-    instruction = move(instruction, 0, 0x104, 0x24 | (state->modes & PFBA ? 0x40 : 0));
-    if (graphics->ChipRevBits0 & GFXF_HR_DENISE) {
+    if (extended) {
+        instruction = move(instruction, 0, 0x100, control);
+        instruction = move(instruction, 0, 0x104, priority);
         instruction = move(instruction, 0, 0x106, display_control);
     }
+
     instruction = move(instruction, 0, 0x92, raster.fetch_start);
     instruction = move(instruction, 0, 0x94, raster.fetch_stop);
     instruction = move(instruction, 0, 0x102, raster.scroll);
