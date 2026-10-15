@@ -3,6 +3,7 @@
 // from the task queue; this path neither starts nor waits for a transfer.
 #include "internal/blitter.h"
 
+#include <stddef.h>
 #include <exec/execbase.h>
 #define __NOLIBBASE__
 #define GRAPHICS_BASE_NAME base
@@ -82,17 +83,6 @@ BOOL pcCompleteBlitter(APTR registers, struct GfxBase* base)
 
 static void __attribute__((used)) ownBlitter(struct GfxBase* base asm("a6"))
 {
-    UBYTE acquired;
-
-    // Ownership and queued task requests share the original signed counter.
-    // The increment must be indivisible with respect to task/interrupt release.
-    __asm__ volatile("addq.w #1,%1\n\tseq %0"
-        : "=d"(acquired), "+m"(base->BlitLock) : : "cc", "memory");
-
-    if (acquired) {
-        return;
-    }
-
     struct ExecBase* SysBase = (struct ExecBase*)base->ExecBase;
     struct Node waiter;
     waiter.ln_Name = (char*)SysBase->ThisTask;
@@ -115,15 +105,6 @@ static void __attribute__((used)) ownBlitter(struct GfxBase* base asm("a6"))
 
 static void __attribute__((used)) disownBlitter(struct GfxBase* base asm("a6"))
 {
-    UBYTE waiting;
-
-    __asm__ volatile("subq.w #1,%1\n\tsge %0"
-        : "=d"(waiting), "+m"(base->BlitLock) : : "cc", "memory");
-
-    if (!waiting) {
-        return;
-    }
-
     struct ExecBase* SysBase = (struct ExecBase*)base->ExecBase;
     Disable();
 
@@ -197,8 +178,12 @@ void pcQueueBSBlit(struct bltnode* node asm("a1"), struct GfxBase* base asm("a6"
     queueBlit(node, base);
 }
 
-// The original ownership entries preserve scratch registers too. Keep that
-// contract around the C implementation and the public Exec calls it makes.
+// The public GfxBase layout supplies the assembly counter displacement.
+_Static_assert(offsetof(struct GfxBase, BlitLock) == 170, "BlitLock assembly offset");
+
+// Ownership and queued requests share an atomically updated signed counter.
+// Uncontended calls need no scratch registers or C stack frame. Preserve all
+// registers around the slow paths, as the original ownership entries do.
 __asm__(
     ".text\n"
     "_invokeBlitter:\n"
@@ -211,14 +196,20 @@ __asm__(
     "rts\n"
     ".globl _pcOwnBlitter\n"
     "_pcOwnBlitter:\n"
+    "addq.w #1,170(a6)\n"
+    "beq.s 1f\n"
     "movem.l d0-d1/a0-a1,-(sp)\n"
     "jsr _ownBlitter\n"
     "movem.l (sp)+,d0-d1/a0-a1\n"
+    "1:\n"
     "rts\n"
     ".globl _pcDisownBlitter\n"
     "_pcDisownBlitter:\n"
+    "subq.w #1,170(a6)\n"
+    "blt.s 2f\n"
     "movem.l d0-d1/a0-a1,-(sp)\n"
     "jsr _disownBlitter\n"
     "movem.l (sp)+,d0-d1/a0-a1\n"
+    "2:\n"
     "rts\n"
 );
