@@ -1122,6 +1122,8 @@ BOOL pcOpenNativeDisplay(struct GfxBase* graphics)
     task->tc_MemEntry.lh_Head = (APTR)&task->tc_MemEntry.lh_Tail;
     task->tc_MemEntry.lh_TailPred = (APTR)&task->tc_MemEntry.lh_Head;
     native->frame.is_Node.ln_Type = NT_INTERRUPT;
+    // Complete graphics frames before lower-priority VBlank clients, as on Amiga.
+    native->frame.is_Node.ln_Pri = 10;
     native->frame.is_Node.ln_Name = "graphics.library frame";
     native->frame.is_Data = native;
     native->frame.is_Code = (APTR)nativeFrame;
