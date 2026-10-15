@@ -239,6 +239,10 @@ BOOL pcInitGraphicsState(struct GfxBase* base)
     base->NormalDisplayColumns = 640;
     base->system_bplcon0 = COLORON;
 
+    // The original publishes this legacy line-duration value for both PAL
+    // and NTSC. It does not describe the framebuffer's physical scan timing.
+    base->MicrosPerLine = 0x3f9d;
+
     // Baseline software defaults precede any display-backend selection. Sprite
     // widths count 16-bit words; FreeSprite restores DefaultSpriteWidth.
     base->SpriteWidth = 1;

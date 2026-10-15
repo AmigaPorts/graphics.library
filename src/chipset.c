@@ -121,6 +121,8 @@ void pcInitChipsetRevision(struct GfxBase* graphics)
     // AGA's monitor workarounds are initialized even while the public
     // chipset selection remains ECS-compatible.
     graphics->Bugs = graphics->ChipRevBits0 & GFXF_AA_MLISA ? 0x25 : 0;
+    graphics->BoardMemType =
+        graphics->ChipRevBits0 & GFXF_AA_MLISA ? ((UWORD)~custom->deniseid >> 8) & 3 : BANDWIDTH_1X;
     graphics->MemType = BANDWIDTH_1X;
     graphics->ColorMask = 0xf0000000;
 }
