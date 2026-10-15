@@ -10,6 +10,10 @@ struct MonitorSpec;
 // RGB4 defaults shared by ColorMap allocation and absent-map display lists.
 UWORD pcDefaultColor(unsigned index);
 
+// ECS superhires stores pairs of two-bit RGB colors in each palette word.
+// A NULL input selects the default palette, as for an absent ColorMap.
+void pcPackSuperhiresColors(UWORD* output, const UWORD* input);
+
 // Expand a legacy color into the native RGB8 palette. A normal RGB4 write
 // replaces both nibbles of each component; a low-nibble write preserves the
 // high nibble. Keep this shared by retained and live RAM lists. See COLORxx:

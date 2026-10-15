@@ -148,9 +148,10 @@ WORD pcViewWrapPosition(const UWORD* start, const UWORD* end, WORD line,
 // beginning, as in the original preparation method. Final display instructions
 // and termination belong to the following build stage, not this prefix.
 // The selected entries must have readable ColorMap storage. With no map,
-// selection is limited to the first 32 defaults. No hardware writes occur.
-UWORD pcBuildColorList(struct ViewPort* viewport, const ULONG* mask,
-    UWORD display_control, UWORD sprite_control);
+// selection is limited to the first 32 defaults. ECS superhires packs those
+// entries as pairs of two-bit RGB colors. No hardware writes occur.
+UWORD pcBuildColorList(
+    struct ViewPort* viewport, const ULONG* mask, UWORD display_control, UWORD sprite_control, BOOL superhires);
 
 // Update the prepared palette records, including both merged field streams.
 // These are RAM lists in the public Amiga format, never hardware addresses.

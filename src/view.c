@@ -34,11 +34,12 @@ static ULONG buildViewPortList(struct View* view, struct ViewPort* viewport,
     // zero selectors would erase non-default banks, XOR and sprite policy.
     // Framebuffer geometry stays in snapshots. The chipset consumer also
     // encodes those sources into its real Copper field lists below.
-    ULONG result = pcBuildColorList(viewport, state->color_mask, display_control, sprite_control);
+    BOOL superhires = (state->modes & SUPERHIRES) && !(graphics->ChipRevBits0 & GFXF_AA_MLISA);
+    ULONG result = pcBuildColorList(viewport, state->color_mask, display_control, sprite_control, superhires);
 
 #if GRAPHICS_CHIPSET
     if (result == MVP_OK && pcUsesChipset(graphics)) {
-        result = pcBuildChipsetViewPortList(viewport, state, graphics);
+        result = pcBuildChipsetViewPortList(view, viewport, state, graphics);
     }
 #endif
 

@@ -1144,8 +1144,8 @@ static struct CopIns* appendInstruction(struct CopIns* instruction,
     return instruction + 1;
 }
 
-UWORD pcBuildColorList(struct ViewPort* viewport, const ULONG* mask,
-    UWORD display_control, UWORD sprite_control)
+UWORD pcBuildColorList(
+    struct ViewPort* viewport, const ULONG* mask, UWORD display_control, UWORD sprite_control, BOOL superhires)
 {
     const struct ColorMap* map = viewport->ColorMap;
     ULONG colors = map ? map->Count : 32;
@@ -1160,6 +1160,12 @@ UWORD pcBuildColorList(struct ViewPort* viewport, const ULONG* mask,
     const UWORD* high = map ? map->ColorTable : NULL;
     const UWORD* low = map && map->Type == COLORMAP_TYPE_V39 ? map->LowColorBits : high;
     UWORD color_mask = map && (map->Flags & COLORMAP_TRANSPARENCY) ? 0xffff : 0x7fff;
+    UWORD packed[32];
+
+    if (superhires) {
+        pcPackSuperhiresColors(packed, high);
+    }
+
     struct CopIns* instruction = list->CopIns;
     instruction = appendInstruction(instruction, COPPER_WAIT, 0, 0);
 
@@ -1185,6 +1191,11 @@ UWORD pcBuildColorList(struct ViewPort* viewport, const ULONG* mask,
 
                 unsigned color_index = bank * 32 + index;
                 UWORD color = map ? table[color_index] : pcDefaultColor(color_index);
+
+                if (superhires && color_index < 32) {
+                    color = packed[color_index];
+                }
+
                 instruction = appendInstruction(instruction, COPPER_MOVE,
                     0x180 + 2 * index, color & color_mask);
             }

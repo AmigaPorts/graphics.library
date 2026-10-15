@@ -455,7 +455,7 @@ __asm__(
     "move.w (sp),d0\n"
     "rte\n");
 
-static void packSuperhiresColors(UWORD* output, const UWORD* input)
+void pcPackSuperhiresColors(UWORD* output, const UWORD* input)
 {
     // Legacy superhires pairs two two-bit RGB colors in each palette word.
     // Each group represents all sixteen combinations of four input colors.
@@ -464,7 +464,9 @@ static void packSuperhiresColors(UWORD* output, const UWORD* input)
         for (unsigned pair = 0; pair < 16; ++pair) {
             unsigned first = group * 16 + (pair & 3);
             unsigned second = group * 16 + (pair >> 2);
-            output[group * 16 + pair] = (input[first] & 0x0ccc) | ((input[second] & 0x0ccc) >> 2);
+            UWORD left = input ? input[first] : pcDefaultColor(first);
+            UWORD right = input ? input[second] : pcDefaultColor(second);
+            output[group * 16 + pair] = (left & 0x0ccc) | ((right & 0x0ccc) >> 2);
         }
     }
 }
@@ -495,7 +497,7 @@ void pcUpdateNativeViewportPalette(struct ViewPort* viewport, ViewBackgroundFunc
         UWORD packed[32];
 
         if ((modes & SUPERHIRES) && !(graphics->ChipRevBits0 & GFXF_AA_MLISA)) {
-            packSuperhiresColors(packed, high);
+            pcPackSuperhiresColors(packed, high);
             high = low = packed;
         }
 

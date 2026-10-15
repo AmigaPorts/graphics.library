@@ -48,9 +48,9 @@ static void backgroundRecord(UWORD* record, UWORD address, UWORD value)
     record[1] = value;
 }
 
-static UWORD backgroundPriority(const struct ColorMap* map, const struct GfxBase* graphics)
+static UWORD viewPortPriority(const struct ColorMap* map, const struct GfxBase* graphics)
 {
-    if (!map->Type) {
+    if (!map || !map->Type) {
         return 0x24;
     }
 
@@ -135,7 +135,7 @@ void pcUpdateChipsetBackground(const struct ViewPort* viewport, ULONG modes,
 
                 if (extended) {
                     control |= 1;
-                    UWORD priority = backgroundPriority(map, graphics) | (modes & PFBA);
+                    UWORD priority = viewPortPriority(map, graphics) | (modes & PFBA);
 
                     if (map->Type && (map->Flags & COLORPLANE_TRANSPARENCY)) {
                         priority |= (UWORD)map->TransparencyPlane << 12;
@@ -448,13 +448,16 @@ static unsigned viewPortDepth(const struct ViewPort* viewport, ULONG modes)
     return depth;
 }
 
-static UWORD bitplaneControl(
-    unsigned depth, const struct ViewPortBuildState* state, UWORD display_control, const struct GfxBase* graphics)
+static UWORD bitplaneControl(unsigned depth, const struct ViewPortBuildState* state, UWORD view_modes,
+    UWORD display_control, const struct GfxBase* graphics)
 {
     const struct ViewPortBuildMode* mode = state->mode_data;
     UWORD control = (depth & 7) << 12;
     control |= depth == 8 ? 0x10 : 0;
     control |= state->modes & (HAM | DUALPF | LACE);
+    // A noninterlaced screen can share a View with an interlaced screen.
+    // Keep field timing enabled across every viewport in that View.
+    control |= view_modes & LACE;
     // ViewPort SUPERHIRES is bit 5, but BPLCON0 SHRES is bit 6. The
     // hardware HIRES bit must also be clear for the super-high mode.
     control |= mode->horizontal_shift == 2 ? 0x0040 : mode->horizontal_shift == 1 ? 0x8000 : 0;
@@ -470,7 +473,7 @@ static UWORD bitplaneControl(
 }
 
 ULONG pcBuildChipsetViewPortList(
-    struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics)
+    struct View* view, struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics)
 {
     const struct ViewPortBuildMode* mode = state->mode_data;
     BOOL dual = (state->modes & DUALPF) && viewport->RasInfo->Next;
@@ -503,8 +506,9 @@ ULONG pcBuildChipsetViewPortList(
 
     UWORD display_control, sprite_control;
     pcReadViewPortListControls(&display_control, &sprite_control, viewport->ColorMap, graphics);
-    UWORD control = bitplaneControl(depth, state, display_control, graphics);
-    UWORD priority = 0x24 | (state->modes & PFBA ? 0x40 : 0);
+    UWORD control = bitplaneControl(depth, state, view->Modes, display_control, graphics);
+    UWORD priority = viewPortPriority(viewport->ColorMap, graphics);
+    priority |= state->modes & PFBA ? 0x40 : 0;
 
     // AGA disables extra-half-brite decoding in every other display mode.
     if ((graphics->ChipRevBits0 & GFXF_AA_LISA) && !(state->modes & EXTRA_HALFBRITE)) {
@@ -589,7 +593,7 @@ ULONG pcFinishChipsetViewPortList(
     UWORD display_control, sprite_control;
     pcReadViewPortListControls(&display_control, &sprite_control, viewport->ColorMap, graphics);
     unsigned depth = viewPortDepth(viewport, state->modes);
-    UWORD control = bitplaneControl(depth, state, display_control, graphics);
+    UWORD control = bitplaneControl(depth, state, view->Modes, display_control, graphics);
 
     WORD start = (WORD)(state->start_y - viewport->DyOffset - ((UWORD)view->DyOffset << state->interlaced));
     WORD height = viewport->DHeight;

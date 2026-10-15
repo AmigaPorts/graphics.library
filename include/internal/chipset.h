@@ -32,7 +32,7 @@ void pcUpdateChipsetBackground(const struct ViewPort* viewport, ULONG modes,
 
 struct ViewPortBuildState;
 ULONG pcBuildChipsetViewPortList(
-    struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics);
+    struct View* view, struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics);
 ULONG pcFinishChipsetViewPortList(
     struct View* view, struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics);
 
