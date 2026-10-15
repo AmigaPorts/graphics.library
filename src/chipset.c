@@ -76,7 +76,15 @@ void pcInitChipsetRevision(struct GfxBase* graphics)
 {
     // VPOSR's Agnus identification contains the motherboard PAL/NTSC
     // selection. Exec's frequency may still be uncalibrated at cold start.
-    graphics->DisplayFlags = custom->vposr & 0x1000 ? NTSC : PAL;
+    UWORD identification = custom->vposr;
+    graphics->DisplayFlags = identification & 0x1000 ? NTSC : PAL;
+
+    // Original Agnus needs the interlaced field swap when light-pen input is
+    // enabled. Keep this hardware capability independent of SetChipRev.
+    if (!(identification & 0x2000)) {
+        graphics->DisplayFlags |= LPEN_SWAP_FRAMES;
+    }
+
     // Original startup reports ECS-compatible operation even on AA hardware.
     // SetChipRev enables the additional capabilities when requested by the OS;
     // displayable bitmap alignment must follow that same public selection.
