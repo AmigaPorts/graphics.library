@@ -160,6 +160,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
     LONG x = line->x + line->step_x * (line->major_x ? first : other) - storage_x;
     LONG y = line->y + line->step_y * (line->major_x ? other : first) - storage_y;
     LONG error = 2 * (line->minor * first - line->major * other) + 2 * line->minor - line->major;
+    LONG row_step = line->step_y * map->BytesPerRow;
 
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
@@ -172,14 +173,17 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
             continue;
         }
 
-        UBYTE* data = map->Planes[plane];
-        LONG pixel_x = x, pixel_y = y, previous_y = y - line->step_y;
+        // Advance the row with the rasterizer instead of multiplying the
+        // row coordinate for every pixel, including skipped ONE_DOT pixels.
+        UBYTE* row = map->Planes[plane] + y * map->BytesPerRow;
+        LONG pixel_x = x;
+        BOOL next_row = TRUE;
         LONG remainder = error;
         unsigned phase = initial_phase;
 
         for (LONG i = first; i <= last; ++i) {
-            if (!one_dot || pixel_y != previous_y) {
-                UBYTE* dest = data + pixel_y * map->BytesPerRow + (pixel_x >> 3);
+            if (!one_dot || next_row) {
+                UBYTE* dest = row + (pixel_x >> 3);
                 UBYTE bit = 0x80 >> (pixel_x & 7);
                 unsigned set = (port->LinePtrn >> (phase & 15)) & 1;
 
@@ -191,12 +195,13 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
                 }
             }
 
-            previous_y = pixel_y;
+            next_row = FALSE;
             --phase;
 
             if (remainder >= 0) {
                 if (line->major_x) {
-                    pixel_y += line->step_y;
+                    row += row_step;
+                    next_row = TRUE;
                 }
                 else {
                     pixel_x += line->step_x;
@@ -209,7 +214,8 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
                 pixel_x += line->step_x;
             }
             else {
-                pixel_y += line->step_y;
+                row += row_step;
+                next_row = TRUE;
             }
 
             remainder += 2 * line->minor;
