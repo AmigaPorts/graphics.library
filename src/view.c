@@ -45,10 +45,17 @@ static ULONG buildViewPortList(struct View* view, struct ViewPort* viewport,
     return result;
 }
 
-static ULONG finishViewPortList(struct View* view, struct ViewPort* viewport,
-    struct ViewPortExtra* extra, struct GfxBase* graphics asm("a6"))
+static ULONG finishViewPortList(
+    struct View* view, struct ViewPort* viewport, struct ViewPortExtra* extra, struct GfxBase* graphics asm("a6"))
 {
     const struct ViewPortBuildState* state = extra->DriverData[0];
+
+#if GRAPHICS_CHIPSET
+    if (pcUsesChipset(graphics) && !(graphics->ChipRevBits0 & GFXF_HR_DENISE)) {
+        return pcFinishChipsetViewPortList(view, viewport, state, graphics);
+    }
+#endif
+
     UWORD first_line = (UWORD)state->start_y >> (state->interlaced ? 1 : 0);
 
     return pcFinishViewPortList(view, viewport, extra, first_line, state->modes, graphics);

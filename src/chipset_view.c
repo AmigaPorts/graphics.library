@@ -3,6 +3,7 @@
  * Copyright (C) 1995-2020, The AROS Development Team. All rights reserved.
  * See CHIPSET.md and LICENSE.APL for provenance and license terms.
  */
+#define V1_3
 #include "internal/chipset.h"
 #include "internal/view.h"
 #include "internal/copper.h"
@@ -10,7 +11,11 @@
 #include "internal/monitor.h"
 
 #define __NOLIBBASE__
+#define GRAPHICS_BASE_NAME graphics
 #include <proto/exec.h>
+#include <proto/graphics.h>
+
+_Static_assert(sizeof(struct CopList) == COPLIST_STORAGE_SIZE, "legacy CopList allocation");
 
 static struct CopIns* move(struct CopIns* instruction, UWORD flags, UWORD address, UWORD data)
 {
@@ -26,6 +31,15 @@ static struct CopIns* planePointer(struct CopIns* instruction, UWORD flags, unsi
     instruction = move(instruction, flags, 0xe0 + 4 * plane, address >> 16);
 
     return move(instruction, flags, 0xe2 + 4 * plane, address);
+}
+
+static struct CopIns* waitLine(struct CopIns* instruction, UWORD flags, WORD line)
+{
+    instruction->OpCode = COPPER_WAIT | flags;
+    instruction->VWAITPOS = line;
+    instruction->HWAITPOS = 0;
+
+    return instruction + 1;
 }
 
 static void backgroundRecord(UWORD* record, UWORD address, UWORD value)
@@ -424,34 +438,22 @@ static void rasterRegisters(struct ChipsetRasterRegisters* output,
     prepareRasterRegisters(output, state, planes, dual, graphics, caller_d5, TRUE, NULL);
 }
 
-ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
-    const struct ViewPortBuildState* state, struct GfxBase* graphics)
+static unsigned viewPortDepth(const struct ViewPort* viewport, ULONG modes)
 {
-    const struct ViewPortBuildMode* mode = state->mode_data;
-    const struct BitMap* bitmap = viewport->RasInfo->BitMap;
-    BOOL dual = (state->modes & DUALPF) && viewport->RasInfo->Next;
-    unsigned depth = bitmap->Depth;
+    unsigned depth = viewport->RasInfo->BitMap->Depth;
 
-    if (dual) {
+    if ((modes & DUALPF) && viewport->RasInfo->Next) {
         unsigned second = viewport->RasInfo->Next->BitMap->Depth;
         depth = depth > second ? depth * 2 - 1 : second * 2;
     }
 
-    struct ViewPortPlaneFetch planes[8];
-    pcReadViewPortScrollFetches(planes, viewport, state->modes,
-        state->source_x, state->source_y, state->source_stride);
-    struct ChipsetRasterRegisters raster;
-    rasterRegisters(&raster, state, planes, dual, graphics, 0);
-    LONG start_x = state->start_x >> mode->horizontal_shift;
-    LONG stop_x = state->stop_x >> mode->horizontal_shift;
-    LONG start_y = state->start_y >> state->interlaced;
-    LONG stop_y = state->stop_y >> state->interlaced;
-    LONG long_stop_y = stop_y;
+    return depth;
+}
 
-    if (graphics->ChipRevBits0 & GFXF_HR_DENISE) {
-        long_stop_y = (state->stop_y + state->interlaced) >> state->interlaced;
-    }
-
+static UWORD bitplaneControl(
+    unsigned depth, const struct ViewPortBuildState* state, UWORD display_control, const struct GfxBase* graphics)
+{
+    const struct ViewPortBuildMode* mode = state->mode_data;
     UWORD control = (depth & 7) << 12;
     control |= depth == 8 ? 0x10 : 0;
     control |= state->modes & (HAM | DUALPF | LACE);
@@ -460,14 +462,50 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
     control |= mode->horizontal_shift == 2 ? 0x0040 : mode->horizontal_shift == 1 ? 0x8000 : 0;
     control |= graphics->system_bplcon0;
 
-    UWORD display_control, sprite_control;
-    pcReadViewPortListControls(&display_control, &sprite_control, viewport->ColorMap, graphics);
-
     // ECSENA gates extended border/genlock controls, not the chipset's
     // presence. Palette banks and sprite resolution alone do not enable it.
     if (display_control & 0x0037) {
         control |= 1;
     }
+
+    return control;
+}
+
+ULONG pcBuildChipsetViewPortList(
+    struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics)
+{
+    const struct ViewPortBuildMode* mode = state->mode_data;
+    BOOL dual = (state->modes & DUALPF) && viewport->RasInfo->Next;
+    unsigned depth = viewPortDepth(viewport, state->modes);
+
+    struct ViewPortPlaneFetch planes[8];
+    pcReadViewPortScrollFetches(planes, viewport, state->modes, state->source_x, state->source_y, state->source_stride);
+    struct ChipsetRasterRegisters raster;
+    rasterRegisters(&raster, state, planes, dual, graphics, 0);
+    LONG start_x = state->start_x >> mode->horizontal_shift;
+    LONG stop_x = state->stop_x >> mode->horizontal_shift;
+    LONG start_y = state->start_y >> state->interlaced;
+    LONG stop_y = state->stop_y >> state->interlaced;
+    LONG long_stop_y = stop_y;
+    BOOL extended = (graphics->ChipRevBits0 & GFXF_HR_DENISE) != 0;
+
+    if (extended) {
+        long_stop_y = (state->stop_y + state->interlaced) >> state->interlaced;
+    } else {
+        // OCS cannot encode the ECS vertical window range. Its display window
+        // spans the monitor; Copper waits gate the bitplanes for each viewport.
+        UWORD column = (UWORD)((UWORD)state->start_x << (2 - mode->horizontal_shift));
+        start_x = (column < 1023 ? column : 1023) >> 2;
+        start_y = state->monitor->min_row;
+
+        LONG bottom = state->monitor->total_rows << state->interlaced;
+        bottom -= (bottom - state->start_y) & state->interlaced;
+        stop_y = long_stop_y = bottom >> state->interlaced;
+    }
+
+    UWORD display_control, sprite_control;
+    pcReadViewPortListControls(&display_control, &sprite_control, viewport->ColorMap, graphics);
+    UWORD control = bitplaneControl(depth, state, display_control, graphics);
 
     struct CopList* list = viewport->DspIns;
     restrictPalette(list, graphics);
@@ -483,7 +521,7 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
         instruction = move(instruction, 0, 0x90, (stop_y << 8) | (stop_x & 255));
     }
 
-    instruction = move(instruction, 0, 0x100, control);
+    instruction = move(instruction, 0, 0x100, extended ? control : control & 0x0fef);
     instruction = move(instruction, 0, 0x104, 0x24 | (state->modes & PFBA ? 0x40 : 0));
     if (graphics->ChipRevBits0 & GFXF_HR_DENISE) {
         instruction = move(instruction, 0, 0x106, display_control);
@@ -504,6 +542,10 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
 
         if (state->interlaced) {
             instruction = planePointer(instruction, CPR_NT_SHT, plane, address + planes[plane].bytes_per_row);
+
+            if (!extended) {
+                list->SLRepeat += 2;
+            }
         }
     }
 
@@ -521,6 +563,43 @@ ULONG pcBuildChipsetViewPortList(struct ViewPort* viewport,
         }
     }
 
+    list->Count = instruction - list->CopIns;
+
+    return MVP_OK;
+}
+
+ULONG pcFinishChipsetViewPortList(
+    struct View* view, struct ViewPort* viewport, const struct ViewPortBuildState* state, struct GfxBase* graphics)
+{
+    struct CopList* list = viewport->DspIns;
+
+    if (!list) {
+        return MVP_NO_DSPINS;
+    }
+
+    UWORD display_control, sprite_control;
+    pcReadViewPortListControls(&display_control, &sprite_control, viewport->ColorMap, graphics);
+    unsigned depth = viewPortDepth(viewport, state->modes);
+    UWORD control = bitplaneControl(depth, state, display_control, graphics);
+
+    WORD start = (WORD)(state->start_y - viewport->DyOffset - ((UWORD)view->DyOffset << state->interlaced));
+    WORD height = viewport->DHeight;
+    WORD long_end = (UWORD)height + (((UWORD)viewport->DyOffset + 1) & height & state->interlaced);
+    struct CopIns* instruction = list->CopIns + list->Count;
+    instruction = waitLine(instruction, 0, start);
+    instruction = move(instruction, 0, 0x100, control);
+    instruction = waitLine(instruction, CPR_NT_SHT, long_end);
+    instruction = waitLine(instruction, CPR_NT_LOF, (UWORD)height & ~1U);
+    instruction = move(instruction, 0, 0x100, control & 0x0fef);
+    ++list->SLRepeat;
+    list->Count = instruction - list->CopIns;
+
+    // OCS measures setup before the final terminator, relative to its actual
+    // bitplane-enable wait rather than the unclipped viewport origin.
+    UWORD gap = CalcIVG(view, viewport);
+    list->CopIns->VWAITPOS = (UWORD)start - gap;
+    instruction = waitLine(instruction, 0, 10000);
+    instruction[-1].HWAITPOS = 255;
     list->Count = instruction - list->CopIns;
 
     return MVP_OK;
