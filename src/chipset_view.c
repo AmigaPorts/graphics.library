@@ -541,6 +541,7 @@ ULONG pcBuildChipsetViewPortList(
     if (long_stop_y != stop_y) {
         instruction = move(instruction, CPR_NT_SHT, 0x90, (stop_y << 8) | (stop_x & 255));
         instruction = move(instruction, CPR_NT_LOF, 0x90, (long_stop_y << 8) | (stop_x & 255));
+        ++list->SLRepeat;
     } else {
         instruction = move(instruction, 0, 0x90, (stop_y << 8) | (stop_x & 255));
     }
@@ -558,9 +559,9 @@ ULONG pcBuildChipsetViewPortList(
         if (state->interlaced) {
             instruction = planePointer(instruction, CPR_NT_SHT, plane, address + planes[plane].bytes_per_row);
 
-            if (!extended) {
-                list->SLRepeat += 2;
-            }
+            // CalcIVG measures one field's setup, excluding the other field's
+            // pointer writes on ECS/AGA as well as OCS.
+            list->SLRepeat += 2;
         }
     }
 
@@ -573,6 +574,7 @@ ULONG pcBuildChipsetViewPortList(
         if (long_high != high) {
             instruction = move(instruction, CPR_NT_LOF, 0x1e4, long_high);
             instruction = move(instruction, CPR_NT_SHT, 0x1e4, high);
+            ++list->SLRepeat;
         } else {
             instruction = move(instruction, 0, 0x1e4, high);
         }
