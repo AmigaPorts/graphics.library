@@ -4,6 +4,8 @@
 #include <graphics/gfx.h>
 #include <stdint.h>
 
+typedef ULONG FramebufferWord __attribute__((may_alias));
+
 static unsigned pixelBytes(enum FramebufferFormat format)
 {
     switch (format) {
@@ -96,19 +98,42 @@ static void fillFramebuffer(struct GraphicsFramebuffer* framebuffer, ULONG rgb,
 {
     unsigned bytes = framebuffer->mode.pixel_bytes;
     ULONG value = pixelValue(framebuffer->mode.format, rgb);
-    UBYTE pixel[4];
+    union {
+        ULONG value;
+        UBYTE bytes[4];
+    } pixel;
 
     for (unsigned byte = 0; byte < bytes; ++byte) {
         unsigned shift = 8 * (framebuffer->mode.little_endian ? byte : bytes - byte - 1);
-        pixel[byte] = value >> shift;
+        pixel.bytes[byte] = value >> shift;
+    }
+
+    if (bytes == 2) {
+        pixel.bytes[2] = pixel.bytes[0];
+        pixel.bytes[3] = pixel.bytes[1];
     }
 
     for (ULONG y = 0; y < height; ++y) {
         UBYTE* target = framebuffer->pixels + (top + y) * framebuffer->stride + left * bytes;
+        ULONG remaining = width;
 
-        for (ULONG x = 0; x < width; ++x) {
+        // Staging storage is ordinary RAM. Pack complete pixels into aligned
+        // longwords; retain byte stores for RGB888 and unaligned rows.
+        if (bytes != 3 && !((uintptr_t)target & 3)) {
+            FramebufferWord* words = (FramebufferWord*)target;
+            ULONG count = (width * bytes) >> 2;
+
+            while (count--) {
+                *words++ = pixel.value;
+            }
+
+            target = (UBYTE*)words;
+            remaining = bytes == 2 ? width & 1 : 0;
+        }
+
+        for (ULONG x = 0; x < remaining; ++x) {
             for (unsigned byte = 0; byte < bytes; ++byte) {
-                *target++ = pixel[byte];
+                *target++ = pixel.bytes[byte];
             }
         }
     }
@@ -260,6 +285,73 @@ static BOOL scaleFramebuffer(struct GraphicsFramebuffer* destination,
         ULONG output_y = field_rows ? (dest_y + y) * 2 + parity : dest_y + y;
         UBYTE* target = destination->pixels + output_y * destination->stride + dest_x * bytes;
 
+        // Both staging buffers use the same format and byte order. Copy an
+        // aligned 32-bit pixel intact, including its unused channel bits.
+        if (bytes == 4 && !(((uintptr_t)row | (uintptr_t)target) & 3)) {
+            const FramebufferWord* pixels = (const FramebufferWord*)row;
+            FramebufferWord* words = (FramebufferWord*)target;
+
+            if (!x_repeat) {
+                ULONG source_x = area->source_x + (skip_x << x_sample);
+                ULONG step = 1UL << x_sample;
+
+                for (ULONG x = 0; x < width; ++x) {
+                    *words++ = pixels[source_x];
+                    source_x += step;
+                }
+            } else {
+                ULONG repeat = 1UL << x_repeat;
+                ULONG phase = skip_x & (repeat - 1);
+                ULONG remaining = width;
+                pixels += area->source_x + (skip_x >> x_repeat);
+
+                // Left clipping can start partway through a repeated pixel.
+                // Complete that pixel before copying whole source-pixel runs.
+                if (phase) {
+                    ULONG count = repeat - phase;
+                    ULONG pixel = *pixels++;
+
+                    if (count > remaining) {
+                        count = remaining;
+                    }
+
+                    remaining -= count;
+
+                    while (count--) {
+                        *words++ = pixel;
+                    }
+                }
+
+                if (x_repeat == 1) {
+                    while (remaining >= 2) {
+                        ULONG pixel = *pixels++;
+                        *words++ = pixel;
+                        *words++ = pixel;
+                        remaining -= 2;
+                    }
+                } else {
+                    while (remaining >= 4) {
+                        ULONG pixel = *pixels++;
+                        *words++ = pixel;
+                        *words++ = pixel;
+                        *words++ = pixel;
+                        *words++ = pixel;
+                        remaining -= 4;
+                    }
+                }
+
+                if (remaining) {
+                    ULONG pixel = *pixels;
+
+                    do {
+                        *words++ = pixel;
+                    } while (--remaining);
+                }
+            }
+
+            continue;
+        }
+
         for (ULONG x = 0; x < width; ++x) {
             ULONG source_x = area->source_x + (((skip_x + x) >> x_repeat) << x_sample);
             const UBYTE* pixel = row + source_x * bytes;
@@ -341,9 +433,64 @@ BOOL pcScaleSpriteOcclusion(const struct GraphicsFramebuffer* destination,
         const UBYTE* row = input->pixels + source_y * input->stride;
         UBYTE* target = output + (dest_y + y) * stride + dest_x;
 
-        for (ULONG x = 0; x < width; ++x) {
-            ULONG source_x = area->source_x + (((skip_x + x) >> x_repeat) << x_sample);
-            target[x] = row[source_x];
+        if (!x_repeat) {
+            ULONG source_x = area->source_x + (skip_x << x_sample);
+            ULONG step = 1UL << x_sample;
+
+            for (ULONG x = 0; x < width; ++x) {
+                *target++ = row[source_x];
+                source_x += step;
+            }
+
+            continue;
+        }
+
+        ULONG repeat = 1UL << x_repeat;
+        ULONG phase = skip_x & (repeat - 1);
+        ULONG remaining = width;
+        row += area->source_x + (skip_x >> x_repeat);
+
+        // Keep mask sampling in phase with the color scaler when clipping
+        // starts or ends inside a repeated source pixel.
+        if (phase) {
+            ULONG count = repeat - phase;
+            UBYTE mask = *row++;
+
+            if (count > remaining) {
+                count = remaining;
+            }
+
+            remaining -= count;
+
+            while (count--) {
+                *target++ = mask;
+            }
+        }
+
+        if (x_repeat == 1) {
+            while (remaining >= 2) {
+                UBYTE mask = *row++;
+                *target++ = mask;
+                *target++ = mask;
+                remaining -= 2;
+            }
+        } else {
+            while (remaining >= 4) {
+                UBYTE mask = *row++;
+                *target++ = mask;
+                *target++ = mask;
+                *target++ = mask;
+                *target++ = mask;
+                remaining -= 4;
+            }
+        }
+
+        if (remaining) {
+            UBYTE mask = *row;
+
+            do {
+                *target++ = mask;
+            } while (--remaining);
         }
     }
 
@@ -845,7 +992,10 @@ BOOL pcRenderIndexedRaster(struct GraphicsFramebuffer* framebuffer, const struct
 
     // Resolve palette addressing and pack once per entry, not per pixel.
     // The output byte order is the firmware format, independent of the 68k CPU.
-    UBYTE colors[256][4];
+    union {
+        UBYTE bytes[256][4];
+        ULONG words[256];
+    } colors;
     unsigned entries = 1U << raster->depth;
 
     for (unsigned index = 0; index < entries; ++index) {
@@ -853,7 +1003,7 @@ BOOL pcRenderIndexedRaster(struct GraphicsFramebuffer* framebuffer, const struct
 
         for (unsigned byte = 0; byte < bytes; ++byte) {
             unsigned shift = 8 * (mode->little_endian ? byte : bytes - byte - 1);
-            colors[index][byte] = value >> shift;
+            colors.bytes[index][byte] = value >> shift;
         }
     }
 
@@ -864,6 +1014,28 @@ BOOL pcRenderIndexedRaster(struct GraphicsFramebuffer* framebuffer, const struct
         ULONG remaining = area->width;
         ULONG x = area->source_x;
 
+        // Full groups in aligned 32-bit staging RAM can use the packed
+        // palette directly. Both views retain the requested byte order.
+        if (bytes == 4 && !((uintptr_t)dest & 3)) {
+            while (remaining >= 8) {
+                ULONG indices[2];
+                planarIndices(&source_row, x, 8, indices);
+                FramebufferWord* words = (FramebufferWord*)dest;
+
+                for (unsigned group = 0; group < 2; ++group) {
+                    ULONG packed = indices[group];
+                    *words++ = colors.words[packed >> 24];
+                    *words++ = colors.words[(packed >> 16) & 255];
+                    *words++ = colors.words[(packed >> 8) & 255];
+                    *words++ = colors.words[packed & 255];
+                }
+
+                dest += 32;
+                x += 8;
+                remaining -= 8;
+            }
+        }
+
         while (remaining) {
             unsigned count = remaining < 8 ? remaining : 8;
             ULONG indices[2];
@@ -872,7 +1044,7 @@ BOOL pcRenderIndexedRaster(struct GraphicsFramebuffer* framebuffer, const struct
             for (unsigned pixel = 0; pixel < count; ++pixel) {
                 unsigned shift = 24 - 8 * (pixel & 3);
                 unsigned index = (indices[pixel >> 2] >> shift) & 255;
-                const UBYTE* color = colors[index];
+                const UBYTE* color = colors.bytes[index];
 
                 // Firmware formats contain two, three or four bytes. Keep
                 // these small copies inline in the freestanding library.
