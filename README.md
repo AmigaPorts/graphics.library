@@ -52,27 +52,26 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 | ReadPixel, layered | 1.00 | **1.33** | 1.39 |
 | WritePixel, layered | 1.00 | **1.42** | 1.47 |
 
-These focused timings are separate from the earlier SysSpeed baseline below.
+SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
+JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
+Previous values precede the patterned-row optimization. These replace the
+older variable-speed baseline; values from the two configurations cannot be compared.
 
-SysSpeed 2.6, FS-UAE A1200/68040, PAL 640×512, 16 colours. This baseline
-predates the blitter-ownership and pixel-access optimizations in `0365b02`
-and `4643f17`; repeat runs varied substantially.
-
-| Test | Original | Replacement |
-|---|---:|---:|
-| Horizontal scrolling | 1.00 | 1.50 |
-| Vertical scrolling | 1.00 | Unverified |
-| Text | 1.00 | 1.41 |
-| Rectangle fill | 1.00 | 1.37 |
-| Draw ellipse | 1.00 | 1.39 |
-| Draw circle | 1.00 | 1.39 |
-| WritePixel | 1.00 | 1.92 |
-| Horizontal lines | 1.00 | 1.30 |
-| Vertical lines | 1.00 | 1.23 |
-| Diagonal lines | 1.00 | 1.37 |
-| Filled ellipse | 1.00 | 0.94 |
-| Filled circle | 1.00 | 0.82 |
-| Area fill | 1.00 | 0.75 |
+| Test | Original | Replacement | Previous |
+|---|---:|---:|---:|
+| Horizontal scrolling | 1.00 | 9.00 | 9.00 |
+| Vertical scrolling | 1.00 | Unverified | Unverified |
+| Text | 1.00 | 9.73 | 9.73 |
+| Rectangle fill | 1.00 | **4.25** | 11.61 |
+| Draw ellipse | 1.00 | 1.53 | 1.53 |
+| Draw circle | 1.00 | 1.53 | 1.53 |
+| WritePixel | 1.00 | 2.11 | 2.11 |
+| Horizontal lines | 1.00 | 10.75 | 10.75 |
+| Vertical lines | 1.00 | 10.75 | 10.75 |
+| Diagonal lines | 1.00 | 10.51 | 10.51 |
+| Filled ellipse | 1.00 | 3.75 | 3.75 |
+| Filled circle | 1.00 | 3.89 | 3.89 |
+| Area fill | 1.00 | 7.26 | 7.26 |
 
 Vertical scrolling needs output verification before its timing can be compared.
 
