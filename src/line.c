@@ -319,7 +319,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
 
     if (chipset) {
         pcOwnBlitter(graphics);
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     // On the unlayered path the shared complement endpoint belongs to the
@@ -469,7 +469,7 @@ static void toggleOwnedPixel(const struct RastPort* port, const struct BitMap* m
 
     if (chipset) {
         pcOwnBlitter(graphics);
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     togglePixel(port, map, x, y);

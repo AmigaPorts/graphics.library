@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 #pragma once
 
+#include "internal/backend.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset.h"
+#endif
 #include "internal/view.h"
 #include "internal/sprite.h"
 #include <exec/interrupts.h>
@@ -38,6 +42,27 @@ ULONG pcSetChipRev(ULONG requested asm("d0"), struct GfxBase* graphics asm("a6")
 // CPU bitmap operations complete before returning. The chipset backend waits
 // for the real blitter, independently of the shared ownership queue.
 void pcWaitBlit(struct GfxBase* graphics asm("a6"));
+
+// Internal drawing keeps the public wait behavior without a dispatch call.
+static inline void pcWaitDrawing(struct GfxBase* graphics)
+{
+#if GRAPHICS_CHIPSET
+
+    if (pcUsesChipset(graphics)) {
+        pcWaitChipsetBlit();
+        return;
+    }
+#endif
+    (void)graphics;
+    // Native bitmap writes are synchronous: there is no submitted transfer
+    // left to poll after a drawing call returns. Keep the compiler boundary
+    // for callers that reuse or release those buffers immediately afterward.
+    // Do not wait for BlitLock, drain queued callbacks, or wait for display
+    // presentation: none of those is the active-transfer contract of WaitBlit.
+    // Queued chipset callbacks remain unavailable on this backend. A future
+    // asynchronous backend must supply its own completion implementation.
+    __asm__ volatile("" : : : "memory");
+}
 
 // Logical scan position within the native software frame. The firmware
 // framebuffer does not expose the monitor's physical scanout position.

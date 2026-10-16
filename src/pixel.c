@@ -205,7 +205,7 @@ ULONG pcReadPixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
         // Reading waits for pending DMA without taking ownership. In
         // particular it remains valid while the calling task owns the blitter.
         if (pcUsesChipset(graphics)) {
-            pcWaitBlit(graphics);
+            pcWaitDrawing(graphics);
         }
 
         LONG offset = (LONG)y * (WORD)map->BytesPerRow + (x >> 3);
@@ -250,7 +250,7 @@ LONG pcWritePixel(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm(
 
         if (chipset) {
             pcOwnBlitter(graphics);
-            pcWaitBlit(graphics);
+            pcWaitDrawing(graphics);
         }
 
         LONG offset = (LONG)y * (WORD)map->BytesPerRow + (x >> 3);

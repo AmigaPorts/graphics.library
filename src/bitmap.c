@@ -588,7 +588,7 @@ ULONG pcBltBitMap(const struct BitMap* source asm("a0"), UWORD source_x asm("d0"
     // Observe the previous owner's DMA before reading or writing any plane.
     if (chipset) {
         OwnBlitter();
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     BOOL reverse_rows = FALSE;
@@ -719,7 +719,7 @@ void pcBltClear(APTR memory asm("a1"), ULONG byte_count asm("d0"), ULONG flags a
     // both the owning task and its last DMA before writing the destination.
     if (chipset) {
         pcOwnBlitter(graphics);
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     if (flags & 2) {
@@ -786,7 +786,7 @@ static void setBitmap(struct BitMap* map, UBYTE pen, UBYTE mask, struct GfxBase*
             UWORD value = pen & (1U << plane) ? 0xffff : 0;
 
             if (chipset) {
-                pcWaitBlit(graphics);
+                pcWaitDrawing(graphics);
             }
         	
             for (ULONG y = 0; y < map->Rows; ++y) {
@@ -839,7 +839,7 @@ void pcSetRast(struct RastPort* port asm("a1"), UBYTE pen asm("d0"), struct GfxB
 
         if (chipset) {
             pcOwnBlitter(graphics);
-            pcWaitBlit(graphics);
+            pcWaitDrawing(graphics);
         }
     	
         for (unsigned plane = 0; plane < map->Depth; ++plane) {
@@ -1245,7 +1245,7 @@ static void drawTemplate(const UWORD* source, LONG source_x, LONG source_y,
 
     if (chipset) {
         OwnBlitter();
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     // Text anchors its scratch raster at logical x=0 and passes a negative
@@ -1553,7 +1553,7 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
     // Even an empty plane mask retains this ownership/wait boundary.
     if (chipset) {
         pcOwnBlitter(graphics);
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     BOOL reverse_mask = prepared && mask_shift < 0;

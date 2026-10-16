@@ -120,7 +120,7 @@ void pcDrawEllipse(struct RastPort* port asm("a1"), WORD center_x asm("d0"), WOR
     // The direct XOR path bypasses WritePixel. Finish preceding DMA before
     // changing its raster, including when the caller already owns the blitter.
     if (edge_mask && pcUsesChipset(graphics)) {
-        pcWaitBlit(graphics);
+        pcWaitDrawing(graphics);
     }
 
     if ((UWORD)radius_x <= 511 && (UWORD)radius_y <= 511) {

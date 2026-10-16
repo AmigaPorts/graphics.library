@@ -24,22 +24,7 @@
 
 void pcWaitBlit(struct GfxBase* graphics asm("a6"))
 {
-#if GRAPHICS_CHIPSET
-
-    if (pcUsesChipset(graphics)) {
-        pcWaitChipsetBlit();
-        return;
-    }
-#endif
-    (void)graphics;
-    // Native bitmap writes are synchronous: there is no submitted transfer
-    // left to poll after a drawing call returns. Keep the compiler boundary
-    // for callers that reuse or release those buffers immediately afterward.
-    // Do not wait for BlitLock, drain queued callbacks, or wait for display
-    // presentation: none of those is the active-transfer contract of WaitBlit.
-    // Queued chipset callbacks remain unavailable on this backend. A future
-    // asynchronous backend must supply its own completion implementation.
-    __asm__ volatile("" : : : "memory");
+    pcWaitDrawing(graphics);
 }
 
 // Queued-blit callbacks directly program chipset registers. The framebuffer
