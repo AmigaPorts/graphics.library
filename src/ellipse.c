@@ -40,6 +40,77 @@ static inline __attribute__((always_inline)) void quadrants(struct RastPort* por
     }
 }
 
+// For radii through 511, the midpoint deltas and decisions fit in LONG.
+// Keep the wide path for larger or negative radii, including WORD wrapping.
+static void drawSmallEllipse(struct RastPort* port, WORD center_x, WORD center_y,
+    WORD radius_x, WORD radius_y, BOOL one_dot, BOOL edge_mask, struct GfxBase* graphics)
+{
+    LONG x = radius_x, y = 0;
+    ULONG square_x = (LONG)radius_x * radius_x;
+    ULONG square_y = (LONG)radius_y * radius_y;
+    LONG twice_x = (LONG)square_x * 2, twice_y = (LONG)square_y * 2;
+    LONG delta_x = twice_y * (UWORD)radius_x * 2, delta_y = 0;
+    LONG steep = twice_x + square_y - delta_x / 2;
+    LONG shallow = twice_y + square_x - delta_x;
+
+    while (shallow < 0) {
+        if (!one_dot || (WORD)(center_x + x) != (WORD)(center_x - x)) {
+            quadrants(port, center_x, center_y, x, y, edge_mask, graphics);
+        }
+
+        ++y;
+        delta_y += twice_x * 2;
+
+        if (steep < 0) {
+            steep += delta_y + twice_x;
+            shallow += delta_y;
+        } else {
+            --x;
+            delta_x -= twice_y * 2;
+            steep += delta_y + twice_x - delta_x;
+            shallow += delta_y + twice_y - delta_x;
+        }
+    }
+
+    BOOL row_drawn = FALSE;
+
+    while (x >= 0) {
+        if (!one_dot || (!row_drawn && (WORD)(center_x + x) != (WORD)(center_x - x))) {
+            quadrants(port, center_x, center_y, x, y, edge_mask, graphics);
+            row_drawn = TRUE;
+        }
+
+        --x;
+        delta_x -= twice_y * 2;
+
+        if (shallow < 0) {
+            ++y;
+            row_drawn = FALSE;
+            delta_y += twice_x * 2;
+            shallow += twice_y + delta_y - delta_x;
+        } else {
+            shallow += twice_y - delta_x;
+        }
+    }
+
+    if (!one_dot) {
+        // Very narrow ellipses can leave a vertical tail after x reaches zero.
+        if (row_drawn) {
+            ++y;
+        }
+
+        for (WORD tail_y = y; tail_y <= radius_y; ++tail_y) {
+            WORD top = center_y - tail_y, bottom = center_y + tail_y;
+
+            if (top < bottom) {
+                pixel(port, center_x, top, edge_mask, graphics);
+            }
+
+            pixel(port, center_x, bottom, edge_mask, graphics);
+        }
+    }
+}
+
 void pcDrawEllipse(struct RastPort* port asm("a1"), WORD center_x asm("d0"), WORD center_y asm("d1"),
     WORD radius_x asm("d2"), WORD radius_y asm("d3"), struct GfxBase* graphics asm("a6"))
 {
@@ -50,6 +121,11 @@ void pcDrawEllipse(struct RastPort* port asm("a1"), WORD center_x asm("d0"), WOR
     // changing its raster, including when the caller already owns the blitter.
     if (edge_mask && pcUsesChipset(graphics)) {
         pcWaitBlit(graphics);
+    }
+
+    if ((UWORD)radius_x <= 511 && (UWORD)radius_y <= 511) {
+        drawSmallEllipse(port, center_x, center_y, radius_x, radius_y, one_dot, edge_mask, graphics);
+        return;
     }
 
     LONG x = radius_x, y = 0;
