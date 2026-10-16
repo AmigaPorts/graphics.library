@@ -19,16 +19,24 @@ static void pixel(struct RastPort* port, WORD x, WORD y, BOOL edge_mask, struct 
     } else { WritePixel(port, x, y); }
 }
 
-static void quadrants(struct RastPort* port, WORD center_x, WORD center_y, LONG x, LONG y,
+static inline __attribute__((always_inline)) void quadrants(struct RastPort* port, WORD center_x, WORD center_y, LONG x, LONG y,
     BOOL edge_mask, struct GfxBase* graphics)
 {
     WORD right = center_x + x, left = center_x - x;
     WORD bottom = center_y + y, top = center_y - y;
+
     pixel(port, right, bottom, edge_mask, graphics);
-    if ((port->Flags & ONE_DOT) || left < right) { pixel(port, left, bottom, edge_mask, graphics); }
+
+    if ((port->Flags & ONE_DOT) || left < right) {
+        pixel(port, left, bottom, edge_mask, graphics);
+    }
+
     if (top < bottom) {
         pixel(port, right, top, edge_mask, graphics);
-        if ((port->Flags & ONE_DOT) || left < right) { pixel(port, left, top, edge_mask, graphics); }
+
+        if ((port->Flags & ONE_DOT) || left < right) {
+            pixel(port, left, top, edge_mask, graphics);
+        }
     }
 }
 
