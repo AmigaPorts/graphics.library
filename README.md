@@ -118,6 +118,8 @@ Pixel outputs match.
 | ScrollRaster, left | 1.00 | **2.78** | 2.86 |
 | ScrollRaster, right | 1.00 | 1.38 | 1.38 |
 
+Results updated in: [55ba5e5](https://github.com/AmigaPorts/graphics.library/commit/55ba5e5925c7c057f952c8c45f73328b9751aaed).
+
 Separate-source `BltBitMap`: same dimensions and timing settings, with distinct
 source/destination bitmaps. Output hashes match the original.
 
