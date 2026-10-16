@@ -118,7 +118,7 @@ Pixel outputs match.
 | ScrollRaster, left | 1.00 | 2.74 | 2.74 |
 | ScrollRaster, right | 1.00 | 1.38 | 1.38 |
 
-Results updated in: [0e99a6f](https://github.com/AmigaPorts/graphics.library/commit/0e99a6f11c86fdb6c3e83275d06f7633c12916dc).
+Results updated in: [22e0a75](https://github.com/AmigaPorts/graphics.library/commit/22e0a755b44cf3b07fcdcb7e4b184dcb7db6a4b6).
 
 Separate-source `BltBitMap`: same dimensions and timing settings, with distinct
 source/destination bitmaps. Output hashes match the original.
@@ -128,7 +128,7 @@ source/destination bitmaps. Output hashes match the original.
 | 1 bit | 1.00 | 1.99 | 1.99 |
 | 15 bits | 1.00 | **2.04** | 2.03 |
 
-Results updated in: [3a0e8d0](https://github.com/AmigaPorts/graphics.library/commit/3a0e8d039702cc1d3e61081c1b044ef3ea219a76).
+Results updated in: [22e0a75](https://github.com/AmigaPorts/graphics.library/commit/22e0a755b44cf3b07fcdcb7e4b184dcb7db6a4b6).
 
 Logical `BltBitMap` operations: same separate-source setup, 1-bit source
 alignment. Output hashes match the original.
@@ -139,7 +139,7 @@ alignment. Output hashes match the original.
 | AND | 1.00 | **2.26** | 5.63 |
 | OR | 1.00 | **2.28** | 5.63 |
 
-Results updated in: [0e99a6f](https://github.com/AmigaPorts/graphics.library/commit/0e99a6f11c86fdb6c3e83275d06f7633c12916dc).
+Results updated in: [22e0a75](https://github.com/AmigaPorts/graphics.library/commit/22e0a755b44cf3b07fcdcb7e4b184dcb7db6a4b6).
 
 ## License
 
