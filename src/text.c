@@ -5,6 +5,7 @@
 #include "internal/font.h"
 #include "internal/memory.h"
 
+#include <stdint.h>
 #include <exec/execbase.h>
 #include <exec/memory.h>
 #include <graphics/clip.h>
@@ -157,16 +158,19 @@ void pcComposeText(const struct RastPort* port, CONST_STRPTR string, UWORD count
         ULONG size = (ULONG)raster->bytes_per_row * font->tf_YSize;
         UBYTE* dest = raster->planes[plane];
 
-        // Clear only the scratch bytes, including unaligned plane storage.
+        // Align wider stores without touching bytes outside the scratch plane.
+        while (size && ((uintptr_t)dest & 3)) {
+            *dest++ = 0;
+            --size;
+        }
+
+        typedef ULONG ScratchWord __attribute__((may_alias));
+
         while (size >= 8) {
-            dest[0] = 0;
-            dest[1] = 0;
-            dest[2] = 0;
-            dest[3] = 0;
-            dest[4] = 0;
-            dest[5] = 0;
-            dest[6] = 0;
-            dest[7] = 0;
+            ScratchWord* words = (ScratchWord*)dest;
+
+            words[0] = 0;
+            words[1] = 0;
             dest += 8;
             size -= 8;
         }
