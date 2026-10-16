@@ -117,12 +117,13 @@ LONG pcAreaEllipse(struct RastPort* port asm("a1"), WORD x asm("d0"), WORD y asm
 // boundary drawing, and the destination's pattern and clipping are separate.
 void pcFillArea(UWORD* mask asm("a1"), UWORD stride asm("d4"), UWORD rows asm("d1"))
 {
-    unsigned words = stride >> 1;
-	
+    // A byte stride can contain at most 32767 complete words.
+    UWORD words = stride >> 1;
+
     while (rows--) {
         unsigned carry = 0;
-    	
-        for (unsigned x = words; x; --x) {
+
+        for (UWORD x = words; x; --x) {
             // Parallel prefix parity: each result bit includes every edge
             // bit to its right, including itself. Carry spans word boundaries
             // but resets on the next row. This processes sixteen pixels at once.
@@ -131,11 +132,15 @@ void pcFillArea(UWORD* mask asm("a1"), UWORD stride asm("d4"), UWORD rows asm("d
             bits ^= bits << 2;
             bits ^= bits << 4;
             bits ^= bits << 8;
-            if (carry) { bits = ~bits; }
+
+            if (carry) {
+                bits = ~bits;
+            }
+
             carry = bits >> 15;
             mask[x - 1] = bits;
         }
-    	
+
         mask += words;
     }
 }
