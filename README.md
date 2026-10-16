@@ -100,6 +100,17 @@ older variable-speed baseline; values from the two configurations cannot be comp
 
 Vertical scrolling needs output verification before its timing can be compared.
 
+Focused horizontal copies: off-screen 320×128, 4 planes, same 68040/AGA settings.
+Median EClock time for 20 calls across three samples; **separate from SysSpeed**.
+Previous values precede the overlapping-copy optimization. Pixel outputs match.
+
+| Operation | Original | Replacement | Previous |
+|---|---:|---:|---:|
+| BltBitMap, left | 1.00 | **9.15** | 15.51 |
+| BltBitMap, right | 1.00 | 8.36 | 8.36 |
+| ScrollRaster, left | 1.00 | **9.65** | 15.76 |
+| ScrollRaster, right | 1.00 | 8.76 | 8.76 |
+
 ## License
 
 Library code is MPL-2.0, with attributed APL-1.1 components and separately
