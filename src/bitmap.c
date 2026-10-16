@@ -105,7 +105,20 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
             unsigned shift = (source_x + offset) & 15;
             ULONG words = remaining >> 4;
 
-            if (shift) {
+            if (minterm == 0xc0) {
+                if (shift) {
+                    unsigned right = 16 - shift;
+
+                    while (words--) {
+                        *output++ = (*input << shift) | (input[1] >> right);
+                        ++input;
+                    }
+                } else {
+                    while (words--) {
+                        *output++ = *input++;
+                    }
+                }
+            } else if (shift) {
                 unsigned right = 16 - shift;
 
                 while (words--) {
@@ -138,7 +151,21 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
 
             // Start one word beyond the run and predecrement, so neither
             // pointer advances before the raster after its final word.
-            if (shift) {
+            if (minterm == 0xc0) {
+                if (shift) {
+                    unsigned right = 16 - shift;
+
+                    while (words--) {
+                        --input;
+                        --output;
+                        *output = (*input << shift) | (input[1] >> right);
+                    }
+                } else {
+                    while (words--) {
+                        *--output = *--input;
+                    }
+                }
+            } else if (shift) {
                 unsigned right = 16 - shift;
 
                 while (words--) {
