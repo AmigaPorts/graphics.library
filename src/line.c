@@ -218,6 +218,63 @@ static void drawSolidVertical(UBYTE* dest, UWORD count, LONG stride, UBYTE bit, 
     }
 }
 
+// A solid line has one Boolean operation per plane, independent of phase.
+static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_step,
+    const struct Line* line, LONG remainder, BOOL one_dot, unsigned operation)
+{
+    UBYTE* dest = row + (x >> 3);
+    UBYTE bit = 0x80 >> (x & 7);
+    BOOL next_row = TRUE;
+    BOOL major_x = line->major_x;
+    LONG minor_step = 2 * line->minor;
+    LONG major_step = 2 * line->major;
+    LONG step_x = line->step_x;
+    unsigned rotation = step_x > 0 ? 7 : 1;
+    UBYTE boundary = step_x > 0 ? 0x80 : 1;
+
+    for (;;) {
+        if (!one_dot || next_row) {
+            if (operation == 0) {
+                *dest &= ~bit;
+            } else if (operation == 1) {
+                *dest ^= bit;
+            } else {
+                *dest |= bit;
+            }
+        }
+
+        if (!--count) {
+            break;
+        }
+
+        BOOL minor_advance = remainder >= 0;
+        LONG offset = 0;
+
+        next_row = !major_x || minor_advance;
+
+        if (next_row) {
+            offset = row_step;
+        }
+
+        if (major_x || minor_advance) {
+            // Rotate within the byte, advancing storage only when it wraps.
+            bit = (bit << rotation) | (bit >> (8 - rotation));
+
+            if (bit & boundary) {
+                offset += step_x;
+            }
+        }
+
+        dest += offset;
+
+        if (minor_advance) {
+            remainder -= major_step;
+        }
+
+        remainder += minor_step;
+    }
+}
+
 static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line, LONG first,
     LONG last, LONG storage_x, LONG storage_y, BOOL one_dot, BOOL continuation, UBYTE initial_phase,
     struct GfxBase* graphics)
@@ -245,7 +302,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
 
     // Start at the clipped phase; each rotation selects the next lower bit.
     pattern = (pattern << shift) | (pattern >> (16 - shift));
-    BOOL solid_axis = !line->minor && (pattern == 0xffff || !pattern) && first <= last;
+    BOOL solid = (pattern == 0xffff || !pattern) && first <= last;
 
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
@@ -268,7 +325,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         unsigned foreground = (minterm >> 6) & 3;
         unsigned background = (minterm >> 4) & 3;
 
-        if (solid_axis) {
+        if (solid && !line->minor) {
             unsigned operation = pattern ? foreground : background;
 
             if (line->major_x) {
@@ -278,6 +335,27 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
             }
             else {
                 drawSolidVertical(row + (x >> 3), last - first + 1, row_step, 0x80 >> (x & 7), operation);
+            }
+
+            continue;
+        }
+
+        if (solid) {
+            switch (pattern ? foreground : background) {
+                case 0:
+                    drawSolidSloped(row, x, last - first + 1, row_step, line, error, one_dot, 0);
+                    break;
+
+                case 1:
+                    drawSolidSloped(row, x, last - first + 1, row_step, line, error, one_dot, 1);
+                    break;
+
+                case 3:
+                    drawSolidSloped(row, x, last - first + 1, row_step, line, error, one_dot, 3);
+                    break;
+
+                default:
+                    break;
             }
 
             continue;
