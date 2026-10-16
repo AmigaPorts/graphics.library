@@ -98,6 +98,10 @@ older variable-speed baseline; values from the two configurations cannot be comp
 | Filled circle | 1.00 | 1.56 | 1.56 |
 | Area fill | 1.00 | 1.96 | 1.96 |
 
+A whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
+time by 27%, but increased rectangle-fill time by 39% and text time by 3%.
+The 68040 chipset ROM grew from 152 to 240 KiB. The default remains `-O2`.
+
 Focused horizontal copies: off-screen 320×128, 4 planes, same 68040/AGA settings.
 Median EClock time for 20 calls across three samples; **separate from SysSpeed**.
 Previous values precede the overlap read-ahead optimization. Pixel outputs match.
