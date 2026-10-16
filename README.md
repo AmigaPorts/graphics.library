@@ -129,6 +129,8 @@ new fixture; output hashes match the original.
 | 1 bit | 1.00 | **2.15** | 2.17 |
 | 15 bits | 1.00 | **2.19** | 2.45 |
 
+Results updated in: [a66f9b3](https://github.com/AmigaPorts/graphics.library/commit/a66f9b357cc4d1eddf8e0cee67ffec1379091ae1).
+
 ## License
 
 Library code is MPL-2.0, with attributed APL-1.1 components and separately
