@@ -1462,6 +1462,22 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
                 if (!mask) {
                     fillPatternRow((UWORD*)output, x, width, toggle, keep);
                     remaining = 0;
+                } else if (direct_mask && !(bounds->MinX & 15)) {
+                    // Aligned direct masks select complete destination words.
+                    // Read each mask before its write, including aliased masks.
+                    UWORD* word = (UWORD*)output + (x >> 4);
+                    ULONG words = mask_words;
+
+                    while (--words) {
+                        UWORD selected = *stencil++;
+                        UWORD old = *word;
+                        *word++ = (old & (~selected | keep)) ^ (toggle & selected);
+                    }
+
+                    carry = *stencil & last_mask;
+                    UWORD old = *word;
+                    *word = (old & (~carry | keep)) ^ (toggle & carry);
+                    remaining = 0;
                 }
 
                 if (reverse_mask) {
