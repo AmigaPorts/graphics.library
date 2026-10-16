@@ -78,7 +78,7 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 | ReadPixel, layered | 1.00 | 1.30 | 1.30 |
 | WritePixel, layered | 1.00 | 1.41 | 1.41 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
@@ -101,7 +101,7 @@ configurations cannot be compared.
 | Filled circle | 1.00 | 1.39 | 1.39 |
 | Area fill | 1.00 | 1.85 | 1.85 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 The native line path speeds up long solid chipset lines. A separate 3–64-pixel
 profile still shows 1–5% dispatch overhead versus the preceding build.
@@ -121,7 +121,7 @@ Pixel outputs match.
 | ScrollRaster, left | 1.00 | 2.74 | 2.74 |
 | ScrollRaster, right | 1.00 | 1.38 | 1.38 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 Separate-source `BltBitMap`: same dimensions and timing settings, with distinct
 source/destination bitmaps. Output hashes match the original.
@@ -131,7 +131,7 @@ source/destination bitmaps. Output hashes match the original.
 | 1 bit | 1.00 | 1.99 | 1.99 |
 | 15 bits | 1.00 | 2.03 | 2.03 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 Logical `BltBitMap` operations: same separate-source setup, 1-bit source
 alignment. Output hashes match the original.
@@ -142,7 +142,7 @@ alignment. Output hashes match the original.
 | AND | 1.00 | 2.26 | 2.26 |
 | OR | 1.00 | 2.29 | 2.29 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 Aligned logical `BltBitMap`: same setup, 320-pixel width, both memory directions.
 Output hashes match the original.
@@ -156,7 +156,7 @@ Output hashes match the original.
 | AND | backward | 1.00 | 1.54 | 1.54 |
 | OR | backward | 1.00 | 1.56 | 1.56 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 Masked-clear `BltBitMap` (`~source & destination`): same settings, 320-pixel
 aligned or 319-pixel shifted width. Output hashes match the original.
@@ -168,7 +168,7 @@ aligned or 319-pixel shifted width. Output hashes match the original.
 | shifted | forward | 1.00 | 2.44 | 2.44 |
 | shifted | backward | 1.00 | 2.40 | 2.40 |
 
-Results updated with this source change.
+Results updated in: [b57faed](https://github.com/AmigaPorts/graphics.library/commit/b57faedaf6b1d74021383b43ebd4b5464e2ed5db).
 
 ## License
 
