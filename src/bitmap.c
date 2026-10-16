@@ -266,6 +266,62 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                 ULONG words = remaining >> 4;
                 LONG step = backward ? -1 : 1;
 
+                if (minterm == 0xc0 && source_shift) {
+                    unsigned right = 16 - source_shift;
+                    UWORD first = input == saved_source ? saved_bits : *input;
+                    UWORD second = input + 1 == saved_source ? saved_bits : input[1];
+
+                    // Each next word reuses the source read before the pending
+                    // write. Keep the last read for any partial trailing word.
+                    if (backward) {
+                        for (;;) {
+                            UWORD bits = (first << source_shift) | (second >> right);
+
+                            if (pending) {
+                                *pending = pending_bits;
+                            }
+
+                            pending = output;
+                            pending_bits = bits;
+
+                            if (!--words) {
+                                break;
+                            }
+
+                            --input;
+                            --output;
+                            second = first;
+                            first = *input;
+                        }
+                    } else {
+                        for (;;) {
+                            UWORD bits = (first << source_shift) | (second >> right);
+
+                            if (pending) {
+                                *pending = pending_bits;
+                            }
+
+                            pending = output;
+                            pending_bits = bits;
+
+                            if (!--words) {
+                                break;
+                            }
+
+                            ++input;
+                            ++output;
+                            first = second;
+                            second = input[1];
+                        }
+                    }
+
+                    saved_source = backward ? input : input + 1;
+                    saved_bits = backward ? first : second;
+                    remaining &= 15;
+
+                    continue;
+                }
+
                 for (;;) {
                     UWORD first = input == saved_source ? saved_bits : *input;
                     UWORD bits = first << source_shift;
