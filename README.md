@@ -64,7 +64,7 @@ blits are intentionally unavailable, and its beam position is logical.
 ## Performance
 
 Relative time per operation: **lower is better**, original = **1.00**.
-All tables use the same replacement build; Previous is the last published result.
+Each table links to its measurement commit; Previous is the last published result.
 Emulator measurements are provisional, not real-hardware results.
 
 Focused pixel benchmark: 4 planes, FS-UAE 3.2.35, 68040/AGA, fixed approximate
@@ -114,11 +114,9 @@ Pixel outputs match.
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | BltBitMap, left | 1.00 | 3.47 | 3.47 |
-| BltBitMap, right | 1.00 | **1.82** | 1.78 |
-| ScrollRaster, left | 1.00 | **3.40** | 4.20 |
-| ScrollRaster, right | 1.00 | **1.82** | 2.36 |
-
-Results updated in: [3c46031](https://github.com/AmigaPorts/graphics.library/commit/3c460319f3967680ee891091336607d7b2ef8359).
+| BltBitMap, right | 1.00 | **1.49** | 1.82 |
+| ScrollRaster, left | 1.00 | 3.40 | 3.40 |
+| ScrollRaster, right | 1.00 | **1.50** | 1.82 |
 
 ## License
 

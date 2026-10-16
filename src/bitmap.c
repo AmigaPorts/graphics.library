@@ -168,7 +168,9 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                     while (words--) {
                         --input;
                         --output;
-                        *output = (*input << shift) | (input[1] >> right);
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        *output = bits >> right;
                     }
                 } else {
                     while (words--) {
