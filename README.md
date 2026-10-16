@@ -113,12 +113,10 @@ Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| BltBitMap, left | 1.00 | **3.03** | 3.47 |
+| BltBitMap, left | 1.00 | **2.91** | 3.03 |
 | BltBitMap, right | 1.00 | 1.49 | 1.49 |
-| ScrollRaster, left | 1.00 | **2.97** | 3.40 |
+| ScrollRaster, left | 1.00 | **2.86** | 2.97 |
 | ScrollRaster, right | 1.00 | 1.50 | 1.50 |
-
-Results updated in: [bf33e27](https://github.com/AmigaPorts/graphics.library/commit/bf33e2704e37e37c0fc5cde529953fdb1e474ea0).
 
 ## License
 

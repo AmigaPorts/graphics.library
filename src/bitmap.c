@@ -298,20 +298,18 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                             --input;
                             second = first;
                             first = *input;
-                            bits = (first << source_shift) | (second >> right);
                             *output = pending_bits;
                             --output;
-                            pending_bits = bits;
+                            pending_bits = (first << source_shift) | (second >> right);
                         }
                     } else {
                         while (--words) {
                             ++input;
                             first = second;
                             second = input[1];
-                            bits = (first << source_shift) | (second >> right);
                             *output = pending_bits;
                             ++output;
-                            pending_bits = bits;
+                            pending_bits = (first << source_shift) | (second >> right);
                         }
                     }
 
