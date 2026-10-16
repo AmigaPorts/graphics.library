@@ -79,14 +79,14 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
-Previous values precede the aligned-glyph text optimization. These replace the
+Previous values precede the direct source-copy optimization. These replace the
 older variable-speed baseline; values from the two configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | Horizontal scrolling | 1.00 | 9.00 | 9.00 |
 | Vertical scrolling | 1.00 | Unverified | Unverified |
-| Text | 1.00 | **4.54** | 6.68 |
+| Text | 1.00 | **3.84** | 4.54 |
 | Rectangle fill | 1.00 | 3.62 | 3.62 |
 | Draw ellipse | 1.00 | 1.53 | 1.53 |
 | Draw circle | 1.00 | 1.53 | 1.53 |
@@ -102,14 +102,14 @@ Vertical scrolling needs output verification before its timing can be compared.
 
 Focused horizontal copies: off-screen 320×128, 4 planes, same 68040/AGA settings.
 Median EClock time for 20 calls across three samples; **separate from SysSpeed**.
-Previous values precede the reverse-word copy optimization. Pixel outputs match.
+Previous values precede the direct source-copy optimization. Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| BltBitMap, left | 1.00 | 9.14 | 9.15 |
-| BltBitMap, right | 1.00 | **4.33** | 8.36 |
+| BltBitMap, left | 1.00 | 9.15 | 9.14 |
+| BltBitMap, right | 1.00 | **1.78** | 4.33 |
 | ScrollRaster, left | 1.00 | 9.65 | 9.65 |
-| ScrollRaster, right | 1.00 | **4.84** | 8.76 |
+| ScrollRaster, right | 1.00 | **2.35** | 4.84 |
 
 ## License
 
