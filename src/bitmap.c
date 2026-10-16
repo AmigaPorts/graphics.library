@@ -1280,12 +1280,9 @@ static UWORD* preparePatternMask(
     return prepared;
 }
 
-// Without a stencil, each row has one Boolean operation for every word.
-// Fold the pattern/minterm once, then apply only the two edge masks separately.
-static void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD bits, UBYTE minterm)
+// Apply the precomputed row operation, masking only the two edge words.
+static void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD toggle, UWORD keep)
 {
-    UWORD toggle = combine(bits, 0, minterm);
-    UWORD keep = toggle ^ combine(bits, 0xffff, minterm);
     UWORD first = 0xffffU >> (x & 15);
     UWORD last = 0xffffU << ((-(x + width)) & 15);
     ULONG words = ((x & 15) + width + 15) >> 4;
@@ -1410,6 +1407,14 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
             continue;
         }
 
+        UWORD toggle = 0;
+        UWORD keep = 0;
+
+        if (!pattern) {
+            toggle = combine(0xffff, 0, minterm);
+            keep = toggle ^ combine(0xffff, 0xffff, minterm);
+        }
+
         for (ULONG phase = 0; phase < phases; ++phase) {
             UBYTE* output = dest->Planes[plane] + ((LONG)bounds->MinY + phase) * dest->BytesPerRow;
             const UBYTE* input = (const UBYTE*)mask;
@@ -1429,26 +1434,24 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
             }
 
             for (ULONG y = phase; y < height; y += row_step) {
-                UWORD bits = pattern ? pattern[((ULONG)pattern_y + y) & (pattern_rows - 1)] : 0xffff;
+                if (pattern) {
+                    UWORD bits = pattern[((ULONG)pattern_y + y) & (pattern_rows - 1)];
 
-                if (rotation) {
-                    bits = (bits >> rotation) | (bits << (16 - rotation));
+                    if (rotation) {
+                        bits = (bits >> rotation) | (bits << (16 - rotation));
+                    }
+
+                    toggle = combine(bits, 0, minterm);
+                    keep = toggle ^ combine(bits, 0xffff, minterm);
                 }
 
                 ULONG remaining = word_mask ? mask_words * 16 : width;
                 LONG x = word_mask ? bounds->MinX & ~15 : bounds->MinX;
                 const UWORD* stencil = (const UWORD*)input;
-                UWORD toggle = 0;
-                UWORD keep = 0;
 
                 if (!mask) {
-                    fillPatternRow((UWORD*)output, x, width, bits, minterm);
+                    fillPatternRow((UWORD*)output, x, width, toggle, keep);
                     remaining = 0;
-                } else {
-                    // The pattern is constant across this row. Resolve its
-                    // minterm once, leaving only the stencil selection per word.
-                    toggle = combine(bits, 0, minterm);
-                    keep = toggle ^ combine(bits, 0xffff, minterm);
                 }
 
                 if (reverse_mask) {
