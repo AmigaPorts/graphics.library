@@ -231,12 +231,11 @@ static void drawSolidVertical(UBYTE* dest, UWORD count, LONG stride, UBYTE bit, 
 
 // A solid line has one Boolean operation per plane, independent of phase.
 static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_step,
-    const struct Line* line, LONG remainder, BOOL one_dot, unsigned operation)
+    const struct Line* line, LONG remainder, BOOL major_x, BOOL one_dot, unsigned operation)
 {
     UBYTE* dest = row + (x >> 3);
     UBYTE bit = 0x80 >> (x & 7);
     BOOL next_row = TRUE;
-    BOOL major_x = line->major_x;
     LONG minor_step = 2 * line->minor;
     LONG diagonal_step = minor_step - 2 * line->major;
     LONG step_x = line->step_x;
@@ -289,22 +288,22 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
     }
 }
 
-// Resolve the solid operation before entering the pixel loop. Callers also
-// select ONE_DOT here so ordinary lines need no per-pixel dot suppression.
-static inline void drawSolidLine(UBYTE* row, LONG x, UWORD count, LONG row_step,
-    const struct Line* line, LONG remainder, BOOL one_dot, unsigned operation)
+// Resolve the solid operation before entering the pixel loop. Callers select
+// the major axis and ONE_DOT so the loop needs no repeated dispatch checks.
+static inline __attribute__((always_inline)) void drawSolidLine(UBYTE* row, LONG x, UWORD count, LONG row_step,
+    const struct Line* line, LONG remainder, BOOL major_x, BOOL one_dot, unsigned operation)
 {
     switch (operation) {
         case 0:
-            drawSolidSloped(row, x, count, row_step, line, remainder, one_dot, 0);
+            drawSolidSloped(row, x, count, row_step, line, remainder, major_x, one_dot, 0);
             break;
 
         case 1:
-            drawSolidSloped(row, x, count, row_step, line, remainder, one_dot, 1);
+            drawSolidSloped(row, x, count, row_step, line, remainder, major_x, one_dot, 1);
             break;
 
         case 3:
-            drawSolidSloped(row, x, count, row_step, line, remainder, one_dot, 3);
+            drawSolidSloped(row, x, count, row_step, line, remainder, major_x, one_dot, 3);
             break;
 
         default:
@@ -380,10 +379,15 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         if (solid) {
             unsigned operation = pattern ? foreground : background;
 
-            if (one_dot) {
-                drawSolidLine(row, x, last - first + 1, row_step, line, error, TRUE, operation);
+            if (line->major_x) {
+                if (one_dot) {
+                    drawSolidLine(row, x, last - first + 1, row_step, line, error, TRUE, TRUE, operation);
+                } else {
+                    drawSolidLine(row, x, last - first + 1, row_step, line, error, TRUE, FALSE, operation);
+                }
             } else {
-                drawSolidLine(row, x, last - first + 1, row_step, line, error, FALSE, operation);
+                // Every pixel advances a row, so ONE_DOT cannot suppress one.
+                drawSolidLine(row, x, last - first + 1, row_step, line, error, FALSE, FALSE, operation);
             }
 
             continue;
