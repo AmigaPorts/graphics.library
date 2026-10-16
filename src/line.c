@@ -246,6 +246,7 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
     // Clearing uses the inverse mask, which rotates just like the set bit.
     if (operation == 0) {
         bit = ~bit;
+        boundary = ~boundary;
     }
 
     for (;;) {
@@ -275,9 +276,7 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
             // Rotate within the byte, advancing storage only when it wraps.
             bit = (bit << rotation) | (bit >> (8 - rotation));
 
-            BOOL wrapped = (bit & boundary) != 0;
-
-            if (operation == 0 ? !wrapped : wrapped) {
+            if (bit == boundary) {
                 dest += step_x;
             }
         }

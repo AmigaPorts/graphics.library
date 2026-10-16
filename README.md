@@ -79,24 +79,24 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
-Previous values precede the glyph-row setup optimization. These replace the
+Previous values precede the line boundary-check optimization. These replace the
 older variable-speed baseline; values from the two configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | Horizontal scrolling | 1.00 | 1.80 | 1.80 |
 | Vertical scrolling | 1.00 | 0.47 | 0.47 |
-| Text | 1.00 | **1.88** | 2.08 |
+| Text | 1.00 | 1.88 | 1.88 |
 | Rectangle fill | 1.00 | 0.96 | 0.96 |
 | Draw ellipse | 1.00 | 1.53 | 1.53 |
 | Draw circle | 1.00 | 1.53 | 1.53 |
 | WritePixel | 1.00 | 1.62 | 1.62 |
 | Horizontal lines | 1.00 | 0.16 | 0.16 |
 | Vertical lines | 1.00 | 0.90 | 0.90 |
-| Diagonal lines | 1.00 | 2.58 | 2.58 |
+| Diagonal lines | 1.00 | **2.32** | 2.58 |
 | Filled ellipse | 1.00 | 1.61 | 1.61 |
 | Filled circle | 1.00 | 1.56 | 1.56 |
-| Area fill | 1.00 | 1.96 | 1.96 |
+| Area fill | 1.00 | **1.94** | 1.96 |
 
 An earlier whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
 time by 27%, but increased rectangle-fill time by 39% and text time by 3%.
