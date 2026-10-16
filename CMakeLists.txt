@@ -107,7 +107,7 @@ if(GRAPHICS_FRAMEBUFFER)
 endif()
 
 if(GRAPHICS_CHIPSET)
-    target_sources(graphics.library PRIVATE src/chipset.c src/chipset_view.c src/chipset_gels.c)
+    target_sources(graphics.library PRIVATE src/chipset.c src/chipset_view.c src/chipset_gels.c src/chipset_line.c)
 endif()
 
 target_compile_definitions(graphics.library PRIVATE

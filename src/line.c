@@ -1,22 +1,17 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-// Independent CPU implementation of the public planar line drawing APIs.
+// Public planar line drawing with shared clipping and backend rasterization.
 #include "internal/line.h"
 #include "internal/backend.h"
 #include "internal/blitter.h"
 #include "internal/native.h"
+#if GRAPHICS_CHIPSET
+#include "internal/chipset.h"
+#endif
 
 #include <graphics/clip.h>
 #define __NOLIBBASE__
 #define GRAPHICS_BASE_NAME graphics
 #include <proto/graphics.h>
-
-struct Line {
-    LONG x, y;
-    LONG major, minor;
-    int step_x, step_y;
-    BOOL major_x;
-    UBYTE phase;
-};
 
 static LONG minorPosition(const struct Line* line, LONG position)
 {
@@ -339,6 +334,15 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
     // Start at the clipped phase; each rotation selects the next lower bit.
     pattern = (pattern << shift) | (pattern >> (16 - shift));
     BOOL solid = (pattern == 0xffff || !pattern) && first <= last;
+#if GRAPHICS_CHIPSET
+    // Decide once for the complete section, keeping DMA setup and per-plane
+    // dispatch out of the short CPU loops.
+    if (last - first + 1 >= CHIPSET_LINE_MIN_PIXELS && solid && chipset && line->minor &&
+        pcDrawChipsetLine(port, map, line, x, y, error, last - first + 1, one_dot, pattern != 0, graphics)) {
+        pcDisownBlitter(graphics);
+        return;
+    }
+#endif
 
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {

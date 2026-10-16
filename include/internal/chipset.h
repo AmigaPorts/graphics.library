@@ -19,6 +19,15 @@ void pcInitChipsetRevision(struct GfxBase* graphics);
 BOOL pcOpenChipsetDisplay(struct GfxBase* graphics);
 BOOL pcCloseChipsetDisplay(struct GfxBase* graphics);
 void pcWaitChipsetBlit(void);
+
+enum { CHIPSET_LINE_MIN_PIXELS = 128 };
+
+struct Line;
+struct RastPort;
+BOOL pcDrawChipsetLine(const struct RastPort* port, const struct BitMap* map,
+    const struct Line* line, LONG x, LONG y, LONG error, UWORD count, BOOL one_dot,
+    BOOL foreground, struct GfxBase* graphics);
+
 ULONG pcChipsetBeamPosition(void);
 ULONG pcSetChipsetRevision(ULONG requested, struct GfxBase* graphics);
 LONG pcProgramChipsetMonitor(struct MonitorSpec* monitor);

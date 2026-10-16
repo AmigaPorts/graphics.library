@@ -76,9 +76,9 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 | ReadPixel, unlayered | 1.00 | 1.38 | 1.38 |
 | WritePixel, unlayered | 1.00 | 1.59 | 1.59 |
 | ReadPixel, layered | 1.00 | 1.30 | 1.30 |
-| WritePixel, layered | 1.00 | **1.41** | 1.40 |
+| WritePixel, layered | 1.00 | 1.41 | 1.41 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
@@ -89,19 +89,22 @@ configurations cannot be compared.
 |---|---:|---:|---:|
 | Horizontal scrolling | 1.00 | 1.29 | 1.29 |
 | Vertical scrolling | 1.00 | 0.47 | 0.47 |
-| Text | 1.00 | **1.68** | 1.70 |
+| Text | 1.00 | 1.68 | 1.68 |
 | Rectangle fill | 1.00 | 0.96 | 0.96 |
 | Draw ellipse | 1.00 | 1.36 | 1.36 |
 | Draw circle | 1.00 | 1.35 | 1.35 |
 | WritePixel | 1.00 | 1.61 | 1.61 |
 | Horizontal lines | 1.00 | 0.16 | 0.16 |
 | Vertical lines | 1.00 | 0.90 | 0.90 |
-| Diagonal lines | 1.00 | 2.05 | 2.05 |
-| Filled ellipse | 1.00 | **1.44** | 1.46 |
+| Diagonal lines | 1.00 | **1.15** | 2.05 |
+| Filled ellipse | 1.00 | 1.44 | 1.44 |
 | Filled circle | 1.00 | 1.39 | 1.39 |
 | Area fill | 1.00 | 1.85 | 1.85 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
+
+The native line path speeds up long solid chipset lines. A separate 3–64-pixel
+profile still shows 1–5% dispatch overhead versus the preceding build.
 
 An earlier whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
 time by 27%, but increased rectangle-fill time by 39% and text time by 3%.
@@ -118,7 +121,7 @@ Pixel outputs match.
 | ScrollRaster, left | 1.00 | 2.74 | 2.74 |
 | ScrollRaster, right | 1.00 | 1.38 | 1.38 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
 
 Separate-source `BltBitMap`: same dimensions and timing settings, with distinct
 source/destination bitmaps. Output hashes match the original.
@@ -128,7 +131,7 @@ source/destination bitmaps. Output hashes match the original.
 | 1 bit | 1.00 | 1.99 | 1.99 |
 | 15 bits | 1.00 | 2.03 | 2.03 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
 
 Logical `BltBitMap` operations: same separate-source setup, 1-bit source
 alignment. Output hashes match the original.
@@ -139,7 +142,7 @@ alignment. Output hashes match the original.
 | AND | 1.00 | 2.26 | 2.26 |
 | OR | 1.00 | 2.29 | 2.29 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
 
 Aligned logical `BltBitMap`: same setup, 320-pixel width, both memory directions.
 Output hashes match the original.
@@ -153,7 +156,7 @@ Output hashes match the original.
 | AND | backward | 1.00 | 1.54 | 1.54 |
 | OR | backward | 1.00 | 1.56 | 1.56 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
 
 Masked-clear `BltBitMap` (`~source & destination`): same settings, 320-pixel
 aligned or 319-pixel shifted width. Output hashes match the original.
@@ -165,7 +168,7 @@ aligned or 319-pixel shifted width. Output hashes match the original.
 | shifted | forward | 1.00 | 2.44 | 2.44 |
 | shifted | backward | 1.00 | 2.40 | 2.40 |
 
-Results updated in: [8305147](https://github.com/AmigaPorts/graphics.library/commit/8305147ce317423128c853f24f9f4324913fbddf).
+Results updated with this source change.
 
 ## License
 
