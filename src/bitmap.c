@@ -283,50 +283,39 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                     UWORD first = input == saved_source ? saved_bits : *input;
                     UWORD second = input + 1 == saved_source ? saved_bits : input[1];
 
-                    // Each next word reuses the source read before the pending
-                    // write. Keep the last read for any partial trailing word.
+                    UWORD bits = (first << source_shift) | (second >> right);
+
+                    if (pending) {
+                        *pending = pending_bits;
+                    }
+
+                    pending_bits = bits;
+
+                    // After the first word, every iteration has a pending write.
+                    // Read the next source before completing that write.
                     if (backward) {
-                        for (;;) {
-                            UWORD bits = (first << source_shift) | (second >> right);
-
-                            if (pending) {
-                                *pending = pending_bits;
-                            }
-
-                            pending = output;
-                            pending_bits = bits;
-
-                            if (!--words) {
-                                break;
-                            }
-
+                        while (--words) {
                             --input;
-                            --output;
                             second = first;
                             first = *input;
+                            bits = (first << source_shift) | (second >> right);
+                            *output = pending_bits;
+                            --output;
+                            pending_bits = bits;
                         }
                     } else {
-                        for (;;) {
-                            UWORD bits = (first << source_shift) | (second >> right);
-
-                            if (pending) {
-                                *pending = pending_bits;
-                            }
-
-                            pending = output;
-                            pending_bits = bits;
-
-                            if (!--words) {
-                                break;
-                            }
-
+                        while (--words) {
                             ++input;
-                            ++output;
                             first = second;
                             second = input[1];
+                            bits = (first << source_shift) | (second >> right);
+                            *output = pending_bits;
+                            ++output;
+                            pending_bits = bits;
                         }
                     }
 
+                    pending = output;
                     saved_source = backward ? input : input + 1;
                     saved_bits = backward ? first : second;
                     remaining &= 15;
