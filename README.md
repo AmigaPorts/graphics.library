@@ -79,26 +79,24 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
-Previous values precede the solid-line clear-mask optimization. These replace the
+Previous values precede the byte-wide glyph optimization. These replace the
 older variable-speed baseline; values from the two configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | Horizontal scrolling | 1.00 | 1.80 | 1.80 |
-| Vertical scrolling | 1.00 | **0.47** | Unverified |
-| Text | 1.00 | **2.69** | 2.68 |
+| Vertical scrolling | 1.00 | 0.47 | 0.47 |
+| Text | 1.00 | **2.22** | 2.69 |
 | Rectangle fill | 1.00 | 2.38 | 2.38 |
 | Draw ellipse | 1.00 | 1.53 | 1.53 |
 | Draw circle | 1.00 | 1.53 | 1.53 |
 | WritePixel | 1.00 | 2.11 | 2.11 |
 | Horizontal lines | 1.00 | 0.23 | 0.23 |
 | Vertical lines | 1.00 | 0.91 | 0.91 |
-| Diagonal lines | 1.00 | **2.59** | 2.81 |
+| Diagonal lines | 1.00 | **2.60** | 2.59 |
 | Filled ellipse | 1.00 | 1.61 | 1.61 |
 | Filled circle | 1.00 | 1.56 | 1.56 |
 | Area fill | 1.00 | 1.96 | 1.96 |
-
-Vertical scrolling now includes its previously unverified measurement; output matches.
 
 Focused horizontal copies: off-screen 320×128, 4 planes, same 68040/AGA settings.
 Median EClock time for 20 calls across three samples; **separate from SysSpeed**.

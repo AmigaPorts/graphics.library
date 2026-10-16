@@ -198,6 +198,17 @@ void pcComposeText(const struct RastPort* port, CONST_STRPTR string, UWORD count
                 unsigned dest_byte = glyph_x >> 3;
                 unsigned bytes = width >> 3;
 
+                // Byte-wide glyphs need one merge per row, without an inner loop.
+                if (bytes == 1) {
+                    for (unsigned y = 0; y < font->tf_YSize; ++y) {
+                        dest[dest_byte] |= source[source_byte];
+                        source += font->tf_Modulo;
+                        dest += raster->bytes_per_row;
+                    }
+
+                    continue;
+                }
+
                 for (unsigned y = 0; y < font->tf_YSize; ++y) {
                     const UBYTE* input = source + source_byte;
                     UBYTE* output = dest + dest_byte;
