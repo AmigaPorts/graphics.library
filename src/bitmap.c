@@ -137,12 +137,43 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
             } else if (shift) {
                 unsigned right = 16 - shift;
 
-                while (words--) {
-                    UWORD bits = (*input << shift) | (input[1] >> right);
+                // Dispatch common logical operations once per run, not per word.
+                if (minterm == 0x60) {
+                    while (words--) {
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
 
-                    *output = combine(bits, *output, minterm);
-                    ++input;
-                    ++output;
+                        bits >>= right;
+                        *output = bits ^ *output;
+                        ++input;
+                        ++output;
+                    }
+                } else if (minterm == 0x80) {
+                    while (words--) {
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = bits & *output;
+                        ++input;
+                        ++output;
+                    }
+                } else if (minterm == 0xe0) {
+                    while (words--) {
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = bits | *output;
+                        ++input;
+                        ++output;
+                    }
+                } else {
+                    while (words--) {
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = combine(bits, *output, minterm);
+                        ++input;
+                        ++output;
+                    }
                 }
             } else {
                 while (words--) {
@@ -186,12 +217,42 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
             } else if (shift) {
                 unsigned right = 16 - shift;
 
-                while (words--) {
-                    --input;
-                    --output;
-                    UWORD bits = (*input << shift) | (input[1] >> right);
+                if (minterm == 0x60) {
+                    while (words--) {
+                        --input;
+                        --output;
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
 
-                    *output = combine(bits, *output, minterm);
+                        bits >>= right;
+                        *output = bits ^ *output;
+                    }
+                } else if (minterm == 0x80) {
+                    while (words--) {
+                        --input;
+                        --output;
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = bits & *output;
+                    }
+                } else if (minterm == 0xe0) {
+                    while (words--) {
+                        --input;
+                        --output;
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = bits | *output;
+                    }
+                } else {
+                    while (words--) {
+                        --input;
+                        --output;
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = combine(bits, *output, minterm);
+                    }
                 }
             } else {
                 while (words--) {

@@ -113,9 +113,9 @@ Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| BltBitMap, left | 1.00 | **2.79** | 2.83 |
+| BltBitMap, left | 1.00 | 2.79 | 2.79 |
 | BltBitMap, right | 1.00 | 1.37 | 1.37 |
-| ScrollRaster, left | 1.00 | **2.74** | 2.78 |
+| ScrollRaster, left | 1.00 | 2.74 | 2.74 |
 | ScrollRaster, right | 1.00 | 1.38 | 1.38 |
 
 Results updated in: [0e99a6f](https://github.com/AmigaPorts/graphics.library/commit/0e99a6f11c86fdb6c3e83275d06f7633c12916dc).
@@ -125,20 +125,19 @@ source/destination bitmaps. Output hashes match the original.
 
 | Source alignment | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| 1 bit | 1.00 | **1.99** | 2.15 |
-| 15 bits | 1.00 | **2.03** | 2.19 |
+| 1 bit | 1.00 | 1.99 | 1.99 |
+| 15 bits | 1.00 | **2.04** | 2.03 |
 
 Results updated in: [3a0e8d0](https://github.com/AmigaPorts/graphics.library/commit/3a0e8d039702cc1d3e61081c1b044ef3ea219a76).
 
 Logical `BltBitMap` operations: same separate-source setup, 1-bit source
-alignment. Before is the preceding build measured with this new fixture;
-output hashes match the original.
+alignment. Output hashes match the original.
 
-| Operation | Original | Replacement | Before |
+| Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| XOR | 1.00 | **5.63** | 6.05 |
-| AND | 1.00 | **5.63** | 6.00 |
-| OR | 1.00 | **5.63** | 6.09 |
+| XOR | 1.00 | **2.23** | 5.63 |
+| AND | 1.00 | **2.26** | 5.63 |
+| OR | 1.00 | **2.28** | 5.63 |
 
 Results updated in: [0e99a6f](https://github.com/AmigaPorts/graphics.library/commit/0e99a6f11c86fdb6c3e83275d06f7633c12916dc).
 
