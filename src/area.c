@@ -122,22 +122,39 @@ void pcFillArea(UWORD* mask asm("a1"), UWORD stride asm("d4"), UWORD rows asm("d
 
     while (rows--) {
         unsigned carry = 0;
+        UWORD x = words;
 
-        for (UWORD x = words; x; --x) {
+        while (x >= 2) {
+            // Join two words explicitly so the prefix operation is independent
+            // of host byte order and does not require longword-aligned storage.
+            ULONG bits = ((ULONG)mask[x - 2] << 16) | mask[x - 1];
+
+            // Carry enters at the rightmost bit and propagates through the prefix.
+            bits ^= carry;
+            bits ^= bits << 1;
+            bits ^= bits << 2;
+            bits ^= bits << 4;
+            bits ^= bits << 8;
+            bits ^= bits << 16;
+
+            carry = bits >> 31;
+            mask[x - 1] = bits;
+            mask[x - 2] = bits >> 16;
+            x -= 2;
+        }
+
+        if (x) {
             // Parallel prefix parity: each result bit includes every edge
             // bit to its right, including itself. Carry spans word boundaries
             // but resets on the next row. This processes sixteen pixels at once.
             UWORD bits = mask[x - 1];
+
+            bits ^= carry;
             bits ^= bits << 1;
             bits ^= bits << 2;
             bits ^= bits << 4;
             bits ^= bits << 8;
 
-            if (carry) {
-                bits = ~bits;
-            }
-
-            carry = bits >> 15;
             mask[x - 1] = bits;
         }
 
