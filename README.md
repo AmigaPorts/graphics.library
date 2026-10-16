@@ -118,6 +118,8 @@ Pixel outputs match.
 | ScrollRaster, left | 1.00 | **2.97** | 3.40 |
 | ScrollRaster, right | 1.00 | 1.50 | 1.50 |
 
+Results updated in: [bf33e27](https://github.com/AmigaPorts/graphics.library/commit/bf33e2704e37e37c0fc5cde529953fdb1e474ea0).
+
 ## License
 
 Library code is MPL-2.0, with attributed APL-1.1 components and separately
