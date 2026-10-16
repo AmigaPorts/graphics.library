@@ -227,7 +227,7 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
     BOOL next_row = TRUE;
     BOOL major_x = line->major_x;
     LONG minor_step = 2 * line->minor;
-    LONG major_step = 2 * line->major;
+    LONG diagonal_step = minor_step - 2 * line->major;
     LONG step_x = line->step_x;
     unsigned rotation = step_x > 0 ? 7 : 1;
     UBYTE boundary = step_x > 0 ? 0x80 : 1;
@@ -265,10 +265,10 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
         }
 
         if (minor_advance) {
-            remainder -= major_step;
+            remainder += diagonal_step;
+        } else {
+            remainder += minor_step;
         }
-
-        remainder += minor_step;
     }
 }
 
