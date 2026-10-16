@@ -139,6 +139,37 @@ static BOOL intersectsClip(const struct Line* line, const struct Rectangle* boun
 
 static void togglePixel(const struct RastPort* port, const struct BitMap* map, LONG x, LONG y);
 
+static void drawSolidHorizontal(UBYTE* row, LONG first, LONG last, unsigned operation)
+{
+    if (operation == 2) {
+        return;
+    }
+
+    UBYTE* dest = row + (first >> 3);
+    UBYTE* end = row + (last >> 3);
+    UBYTE first_mask = 0xffU >> (first & 7);
+    UBYTE last_mask = 0xffU << (7 - (last & 7));
+    UBYTE keep = operation == 1 ? 0xff : 0;
+    UBYTE toggle = operation & 1 ? 0xff : 0;
+
+    if (dest == end) {
+        first_mask &= last_mask;
+    }
+
+    *dest = (*dest & (keep | ~first_mask)) ^ (toggle & first_mask);
+
+    if (dest == end) {
+        return;
+    }
+
+    // Only the two edge bytes need masks; every interior bit is selected.
+    while (++dest < end) {
+        *dest = (*dest & keep) ^ toggle;
+    }
+
+    *end = (*end & (keep | ~last_mask)) ^ (toggle & last_mask);
+}
+
 static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line, LONG first,
     LONG last, LONG storage_x, LONG storage_y, BOOL one_dot, BOOL continuation, UBYTE initial_phase,
     struct GfxBase* graphics)
@@ -166,6 +197,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
 
     // Start at the clipped phase; each rotation selects the next lower bit.
     pattern = (pattern << shift) | (pattern >> (16 - shift));
+    BOOL solid_horizontal = line->major_x && !line->minor && (pattern == 0xffff || !pattern) && first <= last;
 
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
@@ -187,6 +219,14 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         UWORD bits = pattern;
         unsigned foreground = (minterm >> 6) & 3;
         unsigned background = (minterm >> 4) & 3;
+
+        if (solid_horizontal) {
+            LONG end_x = one_dot ? x : x + line->step_x * (last - first);
+
+            drawSolidHorizontal(row, x < end_x ? x : end_x, x > end_x ? x : end_x,
+                pattern ? foreground : background);
+            continue;
+        }
 
         for (LONG i = first; i <= last; ++i) {
             if (!one_dot || next_row) {
