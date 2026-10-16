@@ -161,6 +161,11 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
     LONG y = line->y + line->step_y * (line->major_x ? other : first) - storage_y;
     LONG error = 2 * (line->minor * first - line->major * other) + 2 * line->minor - line->major;
     LONG row_step = line->step_y * map->BytesPerRow;
+    unsigned shift = 15 - (initial_phase & 15);
+    UWORD pattern = port->LinePtrn;
+
+    // Start at the clipped phase; each rotation selects the next lower bit.
+    pattern = (pattern << shift) | (pattern >> (16 - shift));
 
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
@@ -179,24 +184,35 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         LONG pixel_x = x;
         BOOL next_row = TRUE;
         LONG remainder = error;
-        unsigned phase = initial_phase;
+        UWORD bits = pattern;
+        unsigned foreground = (minterm >> 6) & 3;
+        unsigned background = (minterm >> 4) & 3;
 
         for (LONG i = first; i <= last; ++i) {
             if (!one_dot || next_row) {
                 UBYTE* dest = row + (pixel_x >> 3);
                 UBYTE bit = 0x80 >> (pixel_x & 7);
-                unsigned set = (port->LinePtrn >> (phase & 15)) & 1;
 
-                switch ((minterm >> (4 + 2 * set)) & 3) {
-                    case 0: *dest &= ~bit; break;
-                    case 1: *dest ^= bit; break;
-                    case 2: break;
-                    case 3: *dest |= bit; break;
+                switch (bits & 0x8000 ? foreground : background) {
+                    case 0:
+                        *dest &= ~bit;
+                        break;
+
+                    case 1:
+                        *dest ^= bit;
+                        break;
+
+                    case 2:
+                        break;
+
+                    case 3:
+                        *dest |= bit;
+                        break;
                 }
             }
 
             next_row = FALSE;
-            --phase;
+            bits = (bits << 1) | (bits >> 15);
 
             if (remainder >= 0) {
                 if (line->major_x) {
