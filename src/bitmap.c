@@ -1438,10 +1438,17 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
                 ULONG remaining = word_mask ? mask_words * 16 : width;
                 LONG x = word_mask ? bounds->MinX & ~15 : bounds->MinX;
                 const UWORD* stencil = (const UWORD*)input;
+                UWORD toggle = 0;
+                UWORD keep = 0;
 
                 if (!mask) {
                     fillPatternRow((UWORD*)output, x, width, bits, minterm);
                     remaining = 0;
+                } else {
+                    // The pattern is constant across this row. Resolve its
+                    // minterm once, leaving only the stencil selection per word.
+                    toggle = combine(bits, 0, minterm);
+                    keep = toggle ^ combine(bits, 0xffff, minterm);
                 }
 
                 if (reverse_mask) {
@@ -1492,7 +1499,7 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
 
                     UWORD* word = (UWORD*)output + (x >> 4);
                     UWORD old = *word;
-                    *word = (old & ~selected) | (combine(bits, old, minterm) & selected);
+                    *word = (old & (~selected | keep)) ^ (toggle & selected);
                     x += reverse_mask ? -(LONG)count : (LONG)count;
                     remaining -= count;
                 }
