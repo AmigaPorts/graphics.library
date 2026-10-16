@@ -170,6 +170,54 @@ static void drawSolidHorizontal(UBYTE* row, LONG first, LONG last, unsigned oper
     *end = (*end & (keep | ~last_mask)) ^ (toggle & last_mask);
 }
 
+// Draw's signed-word deltas limit an axis to at most 32769 pixels.
+static void drawSolidVertical(UBYTE* dest, UWORD count, LONG stride, UBYTE bit, unsigned operation)
+{
+    // Select the operation once; the bit position is identical in every row.
+    switch (operation) {
+        case 0:
+            bit = ~bit;
+
+            for (;;) {
+                *dest &= bit;
+
+                if (!--count) {
+                    break;
+                }
+
+                dest += stride;
+            }
+            break;
+
+        case 1:
+            for (;;) {
+                *dest ^= bit;
+
+                if (!--count) {
+                    break;
+                }
+
+                dest += stride;
+            }
+            break;
+
+        case 3:
+            for (;;) {
+                *dest |= bit;
+
+                if (!--count) {
+                    break;
+                }
+
+                dest += stride;
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
 static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line, LONG first,
     LONG last, LONG storage_x, LONG storage_y, BOOL one_dot, BOOL continuation, UBYTE initial_phase,
     struct GfxBase* graphics)
@@ -197,7 +245,7 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
 
     // Start at the clipped phase; each rotation selects the next lower bit.
     pattern = (pattern << shift) | (pattern >> (16 - shift));
-    BOOL solid_horizontal = line->major_x && !line->minor && (pattern == 0xffff || !pattern) && first <= last;
+    BOOL solid_axis = !line->minor && (pattern == 0xffff || !pattern) && first <= last;
 
     for (unsigned plane = 0; plane < map->Depth; ++plane) {
         if (!(port->Mask & (1U << plane))) {
@@ -220,11 +268,18 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         unsigned foreground = (minterm >> 6) & 3;
         unsigned background = (minterm >> 4) & 3;
 
-        if (solid_horizontal) {
-            LONG end_x = one_dot ? x : x + line->step_x * (last - first);
+        if (solid_axis) {
+            unsigned operation = pattern ? foreground : background;
 
-            drawSolidHorizontal(row, x < end_x ? x : end_x, x > end_x ? x : end_x,
-                pattern ? foreground : background);
+            if (line->major_x) {
+                LONG end_x = one_dot ? x : x + line->step_x * (last - first);
+
+                drawSolidHorizontal(row, x < end_x ? x : end_x, x > end_x ? x : end_x, operation);
+            }
+            else {
+                drawSolidVertical(row + (x >> 3), last - first + 1, row_step, 0x80 >> (x & 7), operation);
+            }
+
             continue;
         }
 
