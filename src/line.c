@@ -275,6 +275,29 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
     }
 }
 
+// Resolve the solid operation before entering the pixel loop. Callers also
+// select ONE_DOT here so ordinary lines need no per-pixel dot suppression.
+static inline void drawSolidLine(UBYTE* row, LONG x, UWORD count, LONG row_step,
+    const struct Line* line, LONG remainder, BOOL one_dot, unsigned operation)
+{
+    switch (operation) {
+        case 0:
+            drawSolidSloped(row, x, count, row_step, line, remainder, one_dot, 0);
+            break;
+
+        case 1:
+            drawSolidSloped(row, x, count, row_step, line, remainder, one_dot, 1);
+            break;
+
+        case 3:
+            drawSolidSloped(row, x, count, row_step, line, remainder, one_dot, 3);
+            break;
+
+        default:
+            break;
+    }
+}
+
 static void drawSection(const struct RastPort* port, const struct BitMap* map, const struct Line* line, LONG first,
     LONG last, LONG storage_x, LONG storage_y, BOOL one_dot, BOOL continuation, UBYTE initial_phase,
     struct GfxBase* graphics)
@@ -341,21 +364,12 @@ static void drawSection(const struct RastPort* port, const struct BitMap* map, c
         }
 
         if (solid) {
-            switch (pattern ? foreground : background) {
-                case 0:
-                    drawSolidSloped(row, x, last - first + 1, row_step, line, error, one_dot, 0);
-                    break;
+            unsigned operation = pattern ? foreground : background;
 
-                case 1:
-                    drawSolidSloped(row, x, last - first + 1, row_step, line, error, one_dot, 1);
-                    break;
-
-                case 3:
-                    drawSolidSloped(row, x, last - first + 1, row_step, line, error, one_dot, 3);
-                    break;
-
-                default:
-                    break;
+            if (one_dot) {
+                drawSolidLine(row, x, last - first + 1, row_step, line, error, TRUE, operation);
+            } else {
+                drawSolidLine(row, x, last - first + 1, row_step, line, error, FALSE, operation);
             }
 
             continue;
