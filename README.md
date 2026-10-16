@@ -79,26 +79,26 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
-Previous values precede the text-raster clearing optimization. These replace the
+Previous values precede the horizontal-line interior-store optimization. These replace the
 older variable-speed baseline; values from the two configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | Horizontal scrolling | 1.00 | 1.80 | 1.80 |
 | Vertical scrolling | 1.00 | 0.47 | 0.47 |
-| Text | 1.00 | **2.09** | 2.22 |
+| Text | 1.00 | 2.09 | 2.09 |
 | Rectangle fill | 1.00 | 2.38 | 2.38 |
 | Draw ellipse | 1.00 | 1.53 | 1.53 |
 | Draw circle | 1.00 | 1.53 | 1.53 |
 | WritePixel | 1.00 | 2.11 | 2.11 |
-| Horizontal lines | 1.00 | 0.23 | 0.23 |
+| Horizontal lines | 1.00 | **0.17** | 0.23 |
 | Vertical lines | 1.00 | 0.91 | 0.91 |
-| Diagonal lines | 1.00 | **2.59** | 2.60 |
+| Diagonal lines | 1.00 | 2.59 | 2.59 |
 | Filled ellipse | 1.00 | 1.61 | 1.61 |
 | Filled circle | 1.00 | 1.56 | 1.56 |
 | Area fill | 1.00 | 1.96 | 1.96 |
 
-A whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
+An earlier whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
 time by 27%, but increased rectangle-fill time by 39% and text time by 3%.
 The 68040 chipset ROM grew from 152 to 240 KiB. The default remains `-O2`.
 

@@ -162,9 +162,20 @@ static void drawSolidHorizontal(UBYTE* row, LONG first, LONG last, unsigned oper
         return;
     }
 
-    // Only the two edge bytes need masks; every interior bit is selected.
-    while (++dest < end) {
-        *dest = (*dest & keep) ^ toggle;
+    // Draw's signed-word delta limits the interior to at most 4095 bytes.
+    UWORD count = end - dest - 1;
+
+    ++dest;
+
+    // Interior bytes are fully selected. Only complement needs their old value.
+    if (operation == 1) {
+        while (count--) {
+            *dest++ ^= 0xff;
+        }
+    } else {
+        while (count--) {
+            *dest++ = toggle;
+        }
     }
 
     *end = (*end & (keep | ~last_mask)) ^ (toggle & last_mask);
