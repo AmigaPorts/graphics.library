@@ -64,38 +64,39 @@ blits are intentionally unavailable, and its beam position is logical.
 ## Performance
 
 Relative time per operation: **lower is better**, original = **1.00**.
+All tables use the same replacement build; Previous is the last published result.
 Emulator measurements are provisional, not real-hardware results.
 
-Current pixel benchmark: 4 planes, FS-UAE 3.2.35, 68040/AGA, fixed approximate
+Focused pixel benchmark: 4 planes, FS-UAE 3.2.35, 68040/AGA, fixed approximate
 CPU timing, **JIT disabled**. Original references are reused for unchanged
 CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| ReadPixel, unlayered | 1.00 | 1.46 | 1.45 |
+| ReadPixel, unlayered | 1.00 | 1.46 | 1.46 |
 | WritePixel, unlayered | 1.00 | 1.62 | 1.62 |
-| ReadPixel, layered | 1.00 | **1.33** | 1.39 |
-| WritePixel, layered | 1.00 | **1.42** | 1.47 |
+| ReadPixel, layered | 1.00 | 1.33 | 1.33 |
+| WritePixel, layered | 1.00 | 1.42 | 1.42 |
 
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
-Previous values precede the ellipse helper inlining. These replace the
-older variable-speed baseline; values from the two configurations cannot be compared.
+These replace the older variable-speed baseline; values from the two
+configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | Horizontal scrolling | 1.00 | 1.80 | 1.80 |
 | Vertical scrolling | 1.00 | 0.47 | 0.47 |
-| Text | 1.00 | 1.88 | 1.88 |
+| Text | 1.00 | **1.86** | 1.88 |
 | Rectangle fill | 1.00 | 0.96 | 0.96 |
-| Draw ellipse | 1.00 | **1.46** | 1.53 |
-| Draw circle | 1.00 | **1.46** | 1.53 |
+| Draw ellipse | 1.00 | 1.46 | 1.46 |
+| Draw circle | 1.00 | 1.46 | 1.46 |
 | WritePixel | 1.00 | 1.62 | 1.62 |
 | Horizontal lines | 1.00 | 0.16 | 0.16 |
 | Vertical lines | 1.00 | 0.90 | 0.90 |
 | Diagonal lines | 1.00 | 2.05 | 2.05 |
-| Filled ellipse | 1.00 | **1.56** | 1.61 |
-| Filled circle | 1.00 | **1.51** | 1.56 |
+| Filled ellipse | 1.00 | 1.56 | 1.56 |
+| Filled circle | 1.00 | 1.51 | 1.51 |
 | Area fill | 1.00 | 1.92 | 1.92 |
 
 An earlier whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
@@ -104,14 +105,14 @@ The 68040 chipset ROM grew from 152 to 240 KiB. The default remains `-O2`.
 
 Focused horizontal copies: off-screen 320×128, 4 planes, same 68040/AGA settings.
 Median EClock time for 20 calls across three samples; **separate from SysSpeed**.
-Previous values precede the overlap read-ahead optimization. Pixel outputs match.
+Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| BltBitMap, left | 1.00 | **3.47** | 9.15 |
-| BltBitMap, right | 1.00 | 1.78 | 1.78 |
-| ScrollRaster, left | 1.00 | **4.20** | 9.65 |
-| ScrollRaster, right | 1.00 | 2.36 | 2.35 |
+| BltBitMap, left | 1.00 | 3.47 | 3.47 |
+| BltBitMap, right | 1.00 | **1.82** | 1.78 |
+| ScrollRaster, left | 1.00 | **3.40** | 4.20 |
+| ScrollRaster, right | 1.00 | **1.82** | 2.36 |
 
 ## License
 
