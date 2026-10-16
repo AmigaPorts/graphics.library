@@ -248,12 +248,11 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
         }
 
         BOOL minor_advance = remainder >= 0;
-        LONG offset = 0;
 
         next_row = !major_x || minor_advance;
 
         if (next_row) {
-            offset = row_step;
+            dest += row_step;
         }
 
         if (major_x || minor_advance) {
@@ -261,11 +260,9 @@ static inline void drawSolidSloped(UBYTE* row, LONG x, UWORD count, LONG row_ste
             bit = (bit << rotation) | (bit >> (8 - rotation));
 
             if (bit & boundary) {
-                offset += step_x;
+                dest += step_x;
             }
         }
-
-        dest += offset;
 
         if (minor_advance) {
             remainder -= major_step;
