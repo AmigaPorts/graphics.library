@@ -64,7 +64,7 @@ blits are intentionally unavailable, and its beam position is logical.
 ## Performance
 
 Relative time per operation: **lower is better**, original = **1.00**.
-Each table links to its measurement commit; Previous is the last published result.
+All tables use the same measured build; Previous is the last published result.
 Emulator measurements are provisional, not real-hardware results.
 
 Focused pixel benchmark: 4 planes, FS-UAE 3.2.35, 68040/AGA, fixed approximate
@@ -73,7 +73,7 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| ReadPixel, unlayered | 1.00 | 1.46 | 1.46 |
+| ReadPixel, unlayered | 1.00 | **1.45** | 1.46 |
 | WritePixel, unlayered | 1.00 | 1.62 | 1.62 |
 | ReadPixel, layered | 1.00 | 1.33 | 1.33 |
 | WritePixel, layered | 1.00 | 1.42 | 1.42 |
@@ -87,11 +87,11 @@ configurations cannot be compared.
 
 | Test | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| Horizontal scrolling | 1.00 | 1.80 | 1.80 |
+| Horizontal scrolling | 1.00 | **1.29** | 1.80 |
 | Vertical scrolling | 1.00 | 0.47 | 0.47 |
-| Text | 1.00 | **1.86** | 1.88 |
+| Text | 1.00 | **1.73** | 1.86 |
 | Rectangle fill | 1.00 | 0.96 | 0.96 |
-| Draw ellipse | 1.00 | 1.46 | 1.46 |
+| Draw ellipse | 1.00 | **1.47** | 1.46 |
 | Draw circle | 1.00 | 1.46 | 1.46 |
 | WritePixel | 1.00 | 1.62 | 1.62 |
 | Horizontal lines | 1.00 | 0.16 | 0.16 |
@@ -99,7 +99,7 @@ configurations cannot be compared.
 | Diagonal lines | 1.00 | 2.05 | 2.05 |
 | Filled ellipse | 1.00 | 1.56 | 1.56 |
 | Filled circle | 1.00 | 1.51 | 1.51 |
-| Area fill | 1.00 | 1.92 | 1.92 |
+| Area fill | 1.00 | **1.90** | 1.92 |
 
 Results updated in: [3c46031](https://github.com/AmigaPorts/graphics.library/commit/3c460319f3967680ee891091336607d7b2ef8359).
 
@@ -114,9 +114,9 @@ Pixel outputs match.
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | BltBitMap, left | 1.00 | 2.79 | 2.79 |
-| BltBitMap, right | 1.00 | **1.38** | 1.37 |
+| BltBitMap, right | 1.00 | **1.37** | 1.38 |
 | ScrollRaster, left | 1.00 | 2.74 | 2.74 |
-| ScrollRaster, right | 1.00 | **1.39** | 1.38 |
+| ScrollRaster, right | 1.00 | **1.38** | 1.39 |
 
 Results updated in: [4b025bf](https://github.com/AmigaPorts/graphics.library/commit/4b025bfd0d793ca01f8f6b45cc9059ea98bdfe5d).
 
@@ -126,7 +126,7 @@ source/destination bitmaps. Output hashes match the original.
 | Source alignment | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | 1 bit | 1.00 | 1.99 | 1.99 |
-| 15 bits | 1.00 | **2.04** | 2.03 |
+| 15 bits | 1.00 | **2.03** | 2.04 |
 
 Results updated in: [22e0a75](https://github.com/AmigaPorts/graphics.library/commit/22e0a755b44cf3b07fcdcb7e4b184dcb7db6a4b6).
 
@@ -135,25 +135,37 @@ alignment. Output hashes match the original.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| XOR | 1.00 | **2.24** | 2.23 |
-| AND | 1.00 | **2.27** | 2.26 |
-| OR | 1.00 | **2.29** | 2.28 |
+| XOR | 1.00 | 2.24 | 2.24 |
+| AND | 1.00 | **2.26** | 2.27 |
+| OR | 1.00 | 2.29 | 2.29 |
 
 Results updated in: [4b025bf](https://github.com/AmigaPorts/graphics.library/commit/4b025bfd0d793ca01f8f6b45cc9059ea98bdfe5d).
 
 Aligned logical `BltBitMap`: same setup, 320-pixel width, both memory directions.
-Before is the preceding build measured with this fixture; output hashes match.
+Output hashes match the original.
 
-| Operation | Direction | Original | Replacement | Before |
+| Operation | Direction | Original | Replacement | Previous |
 |---|---|---:|---:|---:|
-| XOR | forward | 1.00 | **1.50** | 4.45 |
-| AND | forward | 1.00 | **1.53** | 4.45 |
-| OR | forward | 1.00 | **1.56** | 4.46 |
-| XOR | backward | 1.00 | **1.52** | 4.51 |
-| AND | backward | 1.00 | **1.54** | 4.51 |
-| OR | backward | 1.00 | **1.57** | 4.51 |
+| XOR | forward | 1.00 | 1.50 | 1.50 |
+| AND | forward | 1.00 | 1.53 | 1.53 |
+| OR | forward | 1.00 | **1.55** | 1.56 |
+| XOR | backward | 1.00 | **1.51** | 1.52 |
+| AND | backward | 1.00 | 1.54 | 1.54 |
+| OR | backward | 1.00 | **1.56** | 1.57 |
 
 Results updated in: [4b025bf](https://github.com/AmigaPorts/graphics.library/commit/4b025bfd0d793ca01f8f6b45cc9059ea98bdfe5d).
+
+Masked-clear `BltBitMap` (`~source & destination`): same settings, 320-pixel
+aligned or 319-pixel shifted width. Before is the preceding build on this fixture.
+
+| Alignment | Direction | Original | Replacement | Before |
+|---|---|---:|---:|---:|
+| aligned | forward | 1.00 | **1.66** | 4.61 |
+| aligned | backward | 1.00 | **1.67** | 4.67 |
+| shifted | forward | 1.00 | **2.44** | 5.25 |
+| shifted | backward | 1.00 | **2.40** | 5.25 |
+
+Results updated with this source change.
 
 ## License
 

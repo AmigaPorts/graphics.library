@@ -165,6 +165,15 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                         ++input;
                         ++output;
                     }
+                } else if (minterm == 0x20) {
+                    while (words--) {
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = ~bits & *output;
+                        ++input;
+                        ++output;
+                    }
                 } else {
                     while (words--) {
                         ULONG bits = ((ULONG)*input << 16) | input[1];
@@ -190,6 +199,12 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
             } else if (minterm == 0xe0) {
                 while (words--) {
                     *output = *input | *output;
+                    ++input;
+                    ++output;
+                }
+            } else if (minterm == 0x20) {
+                while (words--) {
+                    *output = ~*input & *output;
                     ++input;
                     ++output;
                 }
@@ -262,6 +277,15 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                         bits >>= right;
                         *output = bits | *output;
                     }
+                } else if (minterm == 0x20) {
+                    while (words--) {
+                        --input;
+                        --output;
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        bits >>= right;
+                        *output = ~bits & *output;
+                    }
                 } else {
                     while (words--) {
                         --input;
@@ -289,6 +313,12 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                     --input;
                     --output;
                     *output = *input | *output;
+                }
+            } else if (minterm == 0x20) {
+                while (words--) {
+                    --input;
+                    --output;
+                    *output = ~*input & *output;
                 }
             } else {
                 while (words--) {
