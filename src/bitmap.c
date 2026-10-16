@@ -23,22 +23,26 @@
 
 static UWORD combine(UWORD source asm("d0"), UWORD dest asm("d1"), UBYTE minterm asm("d2"))
 {
-    switch (minterm) {
-        case 0x00: return 0;
-        case 0x10: return ~(source | dest);
-        case 0x20: return ~source & dest;
-        case 0x30: return ~source;
-        case 0x40: return source & ~dest;
-        case 0x50: return ~dest;
-        case 0x60: return source ^ dest;
-        case 0x70: return ~(source & dest);
-        case 0x80: return source & dest;
-        case 0x90: return ~(source ^ dest);
-        case 0xa0: return dest;
-        case 0xb0: return ~source | dest;
-        case 0xc0: return source;
-        case 0xd0: return source | ~dest;
-        case 0xe0: return source | dest;
+    if (minterm & 0x0f) {
+        return 0xffff;
+    }
+
+    switch (minterm >> 4) {
+        case 0x0: return 0;
+        case 0x1: return ~(source | dest);
+        case 0x2: return ~source & dest;
+        case 0x3: return ~source;
+        case 0x4: return source & ~dest;
+        case 0x5: return ~dest;
+        case 0x6: return source ^ dest;
+        case 0x7: return ~(source & dest);
+        case 0x8: return source & dest;
+        case 0x9: return ~(source ^ dest);
+        case 0xa: return dest;
+        case 0xb: return ~source | dest;
+        case 0xc: return source;
+        case 0xd: return source | ~dest;
+        case 0xe: return source | dest;
         default: return 0xffff;
     }
 }
