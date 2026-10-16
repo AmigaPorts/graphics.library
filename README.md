@@ -102,14 +102,14 @@ Vertical scrolling needs output verification before its timing can be compared.
 
 Focused horizontal copies: off-screen 320×128, 4 planes, same 68040/AGA settings.
 Median EClock time for 20 calls across three samples; **separate from SysSpeed**.
-Previous values precede the overlapping-copy optimization. Pixel outputs match.
+Previous values precede the reverse-word copy optimization. Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| BltBitMap, left | 1.00 | **9.15** | 15.51 |
-| BltBitMap, right | 1.00 | 8.36 | 8.36 |
-| ScrollRaster, left | 1.00 | **9.65** | 15.76 |
-| ScrollRaster, right | 1.00 | 8.76 | 8.76 |
+| BltBitMap, left | 1.00 | 9.14 | 9.15 |
+| BltBitMap, right | 1.00 | **4.33** | 8.36 |
+| ScrollRaster, left | 1.00 | 9.65 | 9.65 |
+| ScrollRaster, right | 1.00 | **4.84** | 8.76 |
 
 ## License
 
