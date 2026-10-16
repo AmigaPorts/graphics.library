@@ -290,7 +290,7 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                     UWORD first = input == saved_source ? saved_bits : *input;
                     UWORD second = input + 1 == saved_source ? saved_bits : input[1];
 
-                    UWORD bits = (first << source_shift) | (second >> right);
+                    UWORD bits = (first << source_shift) | ((ULONG)second >> right);
 
                     if (pending) {
                         *pending = pending_bits;
@@ -307,7 +307,7 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                             first = *input;
                             *output = pending_bits;
                             --output;
-                            pending_bits = (first << source_shift) | (second >> right);
+                            pending_bits = (first << source_shift) | ((ULONG)second >> right);
                         }
                     } else {
                         while (--words) {
@@ -316,7 +316,7 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                             second = input[1];
                             *output = pending_bits;
                             ++output;
-                            pending_bits = (first << source_shift) | (second >> right);
+                            pending_bits = (first << source_shift) | ((ULONG)second >> right);
                         }
                     }
 
