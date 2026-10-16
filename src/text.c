@@ -155,12 +155,13 @@ void pcComposeText(const struct RastPort* port, CONST_STRPTR string, UWORD count
 	
     for (unsigned plane = 0; plane < raster->depth; ++plane) {
         ULONG size = (ULONG)raster->bytes_per_row * font->tf_YSize;
-    	
+        UBYTE* dest = raster->planes[plane];
+
         for (ULONG i = 0; i < size; ++i) {
-	        raster->planes[plane][i] = 0;
+            *dest++ = 0;
         }
     }
-	
+
     const WORD* kerning = font->tf_CharKern;
     const WORD* spacing = font->tf_CharSpace;
     const UWORD* locations = font->tf_CharLoc;
