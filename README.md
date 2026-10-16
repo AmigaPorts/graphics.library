@@ -78,6 +78,8 @@ CPU/chipset, ROM, emulator and benchmark settings. Pixel outputs match.
 | ReadPixel, layered | 1.00 | 1.33 | 1.33 |
 | WritePixel, layered | 1.00 | 1.42 | 1.42 |
 
+Results updated in: [3c46031](https://github.com/AmigaPorts/graphics.library/commit/3c460319f3967680ee891091336607d7b2ef8359).
+
 SysSpeed 2.6 graphics tests: the same fixed approximate 68040/AGA timing,
 JIT disabled, PAL 640×512, 16 colours. The saved original reference is reused.
 These replace the older variable-speed baseline; values from the two
@@ -99,6 +101,8 @@ configurations cannot be compared.
 | Filled circle | 1.00 | 1.51 | 1.51 |
 | Area fill | 1.00 | 1.92 | 1.92 |
 
+Results updated in: [3c46031](https://github.com/AmigaPorts/graphics.library/commit/3c460319f3967680ee891091336607d7b2ef8359).
+
 An earlier whole-library `-O3` trial reduced WritePixel time by 29% and horizontal-line
 time by 27%, but increased rectangle-fill time by 39% and text time by 3%.
 The 68040 chipset ROM grew from 152 to 240 KiB. The default remains `-O2`.
@@ -113,6 +117,8 @@ Pixel outputs match.
 | BltBitMap, right | 1.00 | **1.82** | 1.78 |
 | ScrollRaster, left | 1.00 | **3.40** | 4.20 |
 | ScrollRaster, right | 1.00 | **1.82** | 2.36 |
+
+Results updated in: [3c46031](https://github.com/AmigaPorts/graphics.library/commit/3c460319f3967680ee891091336607d7b2ef8359).
 
 ## License
 
