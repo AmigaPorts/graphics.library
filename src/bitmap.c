@@ -227,7 +227,12 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
         UWORD bits = sourceBits(source, source_x + offset, count) >> shift;
         UWORD* word = dest + ((dest_x + offset) >> 4);
         UWORD old = *word;
-        *word = (old & ~mask) | (combine(bits, old, minterm) & mask);
+
+        if (minterm != 0xc0) {
+            bits = combine(bits, old, minterm);
+        }
+
+        *word = (old & ~mask) | (bits & mask);
         remaining -= count;
     }
 }

@@ -113,23 +113,18 @@ Pixel outputs match.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| BltBitMap, left | 1.00 | **2.91** | 3.03 |
-| BltBitMap, right | 1.00 | 1.49 | 1.49 |
-| ScrollRaster, left | 1.00 | **2.86** | 2.97 |
-| ScrollRaster, right | 1.00 | 1.50 | 1.50 |
-
-Results updated in: [5ceb338](https://github.com/AmigaPorts/graphics.library/commit/5ceb33812cd7d8353061f0b61b8f863a557bf658).
+| BltBitMap, left | 1.00 | 2.91 | 2.91 |
+| BltBitMap, right | 1.00 | **1.37** | 1.49 |
+| ScrollRaster, left | 1.00 | 2.86 | 2.86 |
+| ScrollRaster, right | 1.00 | **1.38** | 1.50 |
 
 Separate-source `BltBitMap`: same dimensions and timing settings, with distinct
-source/destination bitmaps. Before is the preceding build measured with this
-new fixture; output hashes match the original.
+source/destination bitmaps. Output hashes match the original.
 
-| Source alignment | Original | Replacement | Before |
+| Source alignment | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| 1 bit | 1.00 | **2.15** | 2.17 |
-| 15 bits | 1.00 | **2.19** | 2.45 |
-
-Results updated in: [a66f9b3](https://github.com/AmigaPorts/graphics.library/commit/a66f9b357cc4d1eddf8e0cee67ffec1379091ae1).
+| 1 bit | 1.00 | **1.99** | 2.15 |
+| 15 bits | 1.00 | **2.03** | 2.19 |
 
 ## License
 
