@@ -193,6 +193,56 @@ static void copyAliasedRows(const UWORD* source, UWORD* dest, ULONG source_x, UL
                 continue;
             }
 
+            // Complete destination words need no edge mask. Retain the saved
+            // source and pending destination across the run, including the
+            // read-before-write ordering used by overlapping rasters.
+            ULONG edge = backward ? dest_x + remaining : dest_x + width - remaining;
+
+            if (!constant && remaining >= 16 && !(edge & 15)) {
+                ULONG offset = backward ? remaining - 16 : width - remaining;
+                const UWORD* input = source + ((source_x + offset) >> 4);
+                UWORD* output = dest + ((dest_x + offset) >> 4);
+                unsigned source_shift = (source_x + offset) & 15;
+                ULONG words = remaining >> 4;
+                LONG step = backward ? -1 : 1;
+
+                for (;;) {
+                    UWORD first = input == saved_source ? saved_bits : *input;
+                    UWORD bits = first << source_shift;
+
+                    if (source_shift) {
+                        UWORD second = input + 1 == saved_source ? saved_bits : input[1];
+
+                        bits |= second >> (16 - source_shift);
+                        saved_source = backward ? input : input + 1;
+                        saved_bits = backward ? first : second;
+                    } else {
+                        saved_source = input;
+                        saved_bits = first;
+                    }
+
+                    UWORD old = *output;
+
+                    if (pending) {
+                        *pending = pending_bits;
+                    }
+
+                    pending = output;
+                    pending_bits = combine(bits, old, minterm);
+
+                    if (!--words) {
+                        break;
+                    }
+
+                    input += step;
+                    output += step;
+                }
+
+                remaining &= 15;
+
+                continue;
+            }
+
             unsigned count;
             ULONG offset;
 
