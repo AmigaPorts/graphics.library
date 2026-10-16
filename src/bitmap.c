@@ -120,7 +120,9 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                     unsigned right = 16 - shift;
 
                     while (words--) {
-                        *output++ = (*input << shift) | (input[1] >> right);
+                        ULONG bits = ((ULONG)*input << 16) | input[1];
+
+                        *output++ = bits >> right;
                         ++input;
                     }
                 } else {
