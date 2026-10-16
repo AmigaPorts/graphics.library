@@ -1316,6 +1316,60 @@ static inline void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD toggle,
     *output = (*output & (~last | keep)) ^ (toggle & last);
 }
 
+// A solid plane keeps the same edge masks and Boolean operation on every row.
+static void fillSolidPlane(UBYTE* row, UWORD stride, LONG x, ULONG width, ULONG height, UWORD toggle, UWORD keep)
+{
+    UWORD first = 0xffffU >> (x & 15);
+    UWORD last = 0xffffU << ((-(x + width)) & 15);
+    ULONG words = ((x & 15) + width + 15) >> 4;
+
+    row += (x >> 4) * 2;
+
+    if (words == 1) {
+        first &= last;
+        keep |= ~first;
+        toggle &= first;
+
+        do {
+            UWORD* output = (UWORD*)row;
+            *output = (*output & keep) ^ toggle;
+
+            if (--height) {
+                row += stride;
+            }
+        } while (height);
+
+        return;
+    }
+
+    UWORD first_keep = ~first | keep;
+    UWORD first_toggle = toggle & first;
+    UWORD last_keep = ~last | keep;
+    UWORD last_toggle = toggle & last;
+
+    // Rectangle WORD endpoints allow at most 4095 fully covered interior words.
+    UWORD interior = words - 2;
+
+    do {
+        UWORD* output = (UWORD*)row;
+        *output = (*output & first_keep) ^ first_toggle;
+        ++output;
+
+        UWORD count = interior;
+
+        while (count--) {
+            *output = (*output & keep) ^ toggle;
+            ++output;
+        }
+
+        *output = (*output & last_keep) ^ last_toggle;
+
+        if (--height) {
+            row += stride;
+        }
+    } while (height);
+}
+
 // Pattern and mask coordinates are independent: patterns follow the layer's
 // logical origin; the stencil follows the caller's requested rectangle.
 static void drawPattern(const struct RastPort* port, struct BitMap* dest, const UWORD* mask, UWORD mask_stride,
@@ -1423,6 +1477,14 @@ static void drawPattern(const struct RastPort* port, struct BitMap* dest, const 
         if (!pattern) {
             toggle = combine(0xffff, 0, minterm);
             keep = toggle ^ combine(0xffff, 0xffff, minterm);
+
+            if (!mask) {
+                UBYTE* output = dest->Planes[plane] + (LONG)bounds->MinY * dest->BytesPerRow;
+
+                fillSolidPlane(output, dest->BytesPerRow, bounds->MinX, width, height, toggle, keep);
+
+                continue;
+            }
         }
 
         for (ULONG phase = 0; phase < phases; ++phase) {
