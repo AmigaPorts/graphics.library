@@ -182,9 +182,36 @@ void pcComposeText(const struct RastPort* port, CONST_STRPTR string, UWORD count
 	        continue;
         }
     	
+        LONG glyph_x = (LONG)left - raster->left;
+        BOOL aligned = !italic && !smear && glyph_x >= 0 &&
+            !((source_x | glyph_x | width) & 7) &&
+            (ULONG)glyph_x <= raster->width && width <= raster->width - (ULONG)glyph_x;
+
         for (unsigned plane = 0; plane < depth; ++plane) {
             const UBYTE* source = color ? color_font->ctf_CharData[plane] : font->tf_CharData;
             UBYTE* dest = raster->planes[plane];
+
+            // Alignment and clipping are identical on every plain glyph row.
+            // Keep the OR and row order for overlapping glyphs and storage.
+            if (aligned) {
+                unsigned source_byte = source_x >> 3;
+                unsigned dest_byte = glyph_x >> 3;
+                unsigned bytes = width >> 3;
+
+                for (unsigned y = 0; y < font->tf_YSize; ++y) {
+                    const UBYTE* input = source + source_byte;
+                    UBYTE* output = dest + dest_byte;
+
+                    for (unsigned byte = 0; byte < bytes; ++byte) {
+                        output[byte] |= input[byte];
+                    }
+
+                    source += font->tf_Modulo;
+                    dest += raster->bytes_per_row;
+                }
+
+                continue;
+            }
         	
             for (unsigned y = 0; y < font->tf_YSize; ++y) {
                 LONG x = (LONG)left - raster->left;
