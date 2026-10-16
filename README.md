@@ -114,9 +114,9 @@ Pixel outputs match.
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
 | BltBitMap, left | 1.00 | 2.79 | 2.79 |
-| BltBitMap, right | 1.00 | 1.37 | 1.37 |
+| BltBitMap, right | 1.00 | **1.38** | 1.37 |
 | ScrollRaster, left | 1.00 | 2.74 | 2.74 |
-| ScrollRaster, right | 1.00 | 1.38 | 1.38 |
+| ScrollRaster, right | 1.00 | **1.39** | 1.38 |
 
 Results updated in: [22e0a75](https://github.com/AmigaPorts/graphics.library/commit/22e0a755b44cf3b07fcdcb7e4b184dcb7db6a4b6).
 
@@ -135,11 +135,25 @@ alignment. Output hashes match the original.
 
 | Operation | Original | Replacement | Previous |
 |---|---:|---:|---:|
-| XOR | 1.00 | **2.23** | 5.63 |
-| AND | 1.00 | **2.26** | 5.63 |
-| OR | 1.00 | **2.28** | 5.63 |
+| XOR | 1.00 | **2.24** | 2.23 |
+| AND | 1.00 | **2.27** | 2.26 |
+| OR | 1.00 | **2.29** | 2.28 |
 
 Results updated in: [22e0a75](https://github.com/AmigaPorts/graphics.library/commit/22e0a755b44cf3b07fcdcb7e4b184dcb7db6a4b6).
+
+Aligned logical `BltBitMap`: same setup, 320-pixel width, both memory directions.
+Before is the preceding build measured with this fixture; output hashes match.
+
+| Operation | Direction | Original | Replacement | Before |
+|---|---|---:|---:|---:|
+| XOR | forward | 1.00 | **1.50** | 4.45 |
+| AND | forward | 1.00 | **1.53** | 4.45 |
+| OR | forward | 1.00 | **1.56** | 4.46 |
+| XOR | backward | 1.00 | **1.52** | 4.51 |
+| AND | backward | 1.00 | **1.54** | 4.51 |
+| OR | backward | 1.00 | **1.57** | 4.51 |
+
+Results updated with this source change.
 
 ## License
 

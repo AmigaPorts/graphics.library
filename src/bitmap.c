@@ -175,6 +175,24 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                         ++output;
                     }
                 }
+            } else if (minterm == 0x60) {
+                while (words--) {
+                    *output = *input ^ *output;
+                    ++input;
+                    ++output;
+                }
+            } else if (minterm == 0x80) {
+                while (words--) {
+                    *output = *input & *output;
+                    ++input;
+                    ++output;
+                }
+            } else if (minterm == 0xe0) {
+                while (words--) {
+                    *output = *input | *output;
+                    ++input;
+                    ++output;
+                }
             } else {
                 while (words--) {
                     *output = combine(*input, *output, minterm);
@@ -253,6 +271,24 @@ static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest
                         bits >>= right;
                         *output = combine(bits, *output, minterm);
                     }
+                }
+            } else if (minterm == 0x60) {
+                while (words--) {
+                    --input;
+                    --output;
+                    *output = *input ^ *output;
+                }
+            } else if (minterm == 0x80) {
+                while (words--) {
+                    --input;
+                    --output;
+                    *output = *input & *output;
+                }
+            } else if (minterm == 0xe0) {
+                while (words--) {
+                    --input;
+                    --output;
+                    *output = *input | *output;
                 }
             } else {
                 while (words--) {
