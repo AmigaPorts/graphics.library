@@ -14,27 +14,43 @@ void pcUpdateMinterms(struct RastPort* port)
 {
     UBYTE mode = port->DrawMode;
     BOOL inverse = (mode & INVERSVID) != 0;
-    for (unsigned plane = 0; plane < 8; ++plane) {
-        UBYTE foreground = ((UBYTE)port->FgPen >> plane) & 1;
-        UBYTE background = ((UBYTE)port->BgPen >> plane) & 1;
-        UBYTE value;
-        // The low nibble preserves destination C outside the selected area A.
-        // Within A, B selects foreground/background (or the affected pixels
-        // for JAM1/complement). These are software drawing truth tables, not
-        // blitter programming or a register model.
-        if (mode & COMPLEMENT) {
-            value = (mode & JAM2) ? 0x5a : (inverse ? 0x9a : 0x6a);
-        } else if (mode & JAM2) {
-            if (inverse) {
-                UBYTE temporary = foreground;
-                foreground = background;
-                background = temporary;
-            }
-            value = 0x0a | (foreground ? 0xc0 : 0) | (background ? 0x30 : 0);
-        } else {
-            value = inverse ? (foreground ? 0xba : 0x8a) : (foreground ? 0xea : 0x2a);
+
+    // The drawing mode is shared by all planes. The low nibble preserves
+    // destination C outside area A; within A, B selects the applicable pen.
+    if (mode & COMPLEMENT) {
+        UBYTE value = (mode & JAM2) ? 0x5a : (inverse ? 0x9a : 0x6a);
+
+        for (unsigned plane = 0; plane < 8; ++plane) {
+            port->minterms[plane] = value;
         }
-        port->minterms[plane] = value;
+
+        return;
+    }
+
+    UBYTE foreground = port->FgPen;
+
+    if (mode & JAM2) {
+        UBYTE background = port->BgPen;
+
+        if (inverse) {
+            UBYTE temporary = foreground;
+            foreground = background;
+            background = temporary;
+        }
+
+        for (unsigned plane = 0; plane < 8; ++plane) {
+            port->minterms[plane] = 0x0a | (foreground & 1 ? 0xc0 : 0) | (background & 1 ? 0x30 : 0);
+            foreground >>= 1;
+            background >>= 1;
+        }
+    } else {
+        UBYTE value = inverse ? 0x8a : 0x2a;
+        UBYTE selected = inverse ? 0x30 : 0xc0;
+
+        for (unsigned plane = 0; plane < 8; ++plane) {
+            port->minterms[plane] = value | (foreground & 1 ? selected : 0);
+            foreground >>= 1;
+        }
     }
 }
 
