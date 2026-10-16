@@ -188,8 +188,8 @@ void pcComposeText(const struct RastPort* port, CONST_STRPTR string, UWORD count
     unsigned smear = port->AlgoStyle & FSF_BOLD ? font->tf_BoldSmear : 0;
     WORD advance = 0;
 	
-    for (ULONG i = 0; i < count; ++i) {
-        unsigned character = string[i];
+    for (UWORD remaining = count; remaining; --remaining, ++string) {
+        unsigned character = *string;
         unsigned glyph = character < font->tf_LoChar || character > font->tf_HiChar ?
             fallback : character - font->tf_LoChar;
         WORD left = (UWORD)(advance + (kerning ? kerning[glyph] : 0));
