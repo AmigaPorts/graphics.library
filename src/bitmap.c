@@ -66,9 +66,19 @@ static UWORD sourceBits(const UWORD* source, ULONG x, unsigned count)
     return value;
 }
 
+static inline void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD toggle, UWORD keep);
+
 static void copyRow(const UWORD* source, UWORD* dest, ULONG source_x, ULONG dest_x,
     ULONG width, UBYTE minterm, int backward)
 {
+    // Constant minterms do not depend on the source or traversal direction.
+    // Keep the same partial-word masks as patterned rectangle fills.
+    if (width && (minterm == 0x00 || minterm == 0xf0)) {
+        fillPatternRow(dest, dest_x, width, minterm == 0xf0 ? 0xffff : 0, 0);
+
+        return;
+    }
+
     // Whole-word copies need neither alignment masks nor minterm dispatch.
     if (minterm == 0xc0 && source && (ULONG)source != 0xffffffff && !((source_x | dest_x | width) & 15)) {
         source += source_x >> 4;
@@ -1281,7 +1291,7 @@ static UWORD* preparePatternMask(
 }
 
 // Apply the precomputed row operation, masking only the two edge words.
-static void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD toggle, UWORD keep)
+static inline void fillPatternRow(UWORD* row, LONG x, ULONG width, UWORD toggle, UWORD keep)
 {
     UWORD first = 0xffffU >> (x & 15);
     UWORD last = 0xffffU << ((-(x + width)) & 15);
